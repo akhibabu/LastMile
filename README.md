@@ -226,18 +226,62 @@ Coverage (Vitest, no live DB required):
 - Tracking: valid/invalid transitions, admin override, append-only history API
 - Failed delivery: reason required, FAILED→RESCHEDULED→ASSIGNED, attempt retention
 
-## 18. Deployment
+## 18. Deployment (Render + Vercel)
 
-**Database (Neon/Supabase)**  
-Create a Postgres instance, copy the connection string, run `npx prisma migrate deploy` and `npm run db:seed` once.
+The GitHub repo is [akhibabu/LastMile](https://github.com/akhibabu/LastMile). Production auth uses an HTTP-only cookie, so the frontend origin and API URL must match the live hosts.
 
-**Backend (Render)**  
-Use `render.yaml` or: root `backend`, build `npm install && npx prisma generate && npm run build`, start `npx prisma migrate deploy && npm start`. Set `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL`, `NODE_ENV=production`.
+### 1. Postgres (Neon)
 
-**Frontend (Vercel)**  
-Root `frontend`. Env: `VITE_API_URL=https://<api-host>/api`. Vite SPA rewrites are in `frontend/vercel.json`.
+1. Create a project at [neon.tech](https://neon.tech).
+2. Copy the connection string (use the **direct** host for migrations, not the pooled `-pooler` host if Prisma migrate fails).
+3. Keep it for `DATABASE_URL` on Render.
 
-Do not hardcode localhost in production env vars.
+### 2. Backend (Render)
+
+1. [New → Blueprint](https://dashboard.render.com/select-repo?type=blueprint) and select `akhibabu/LastMile`, or **New Web Service** → that repo.
+2. If creating the service manually:
+   - Root directory: `backend`
+   - Runtime: Node
+   - Build: `npm install && npx prisma generate && npm run build`
+   - Start: `npx prisma migrate deploy && npm start`
+   - Health check: `/health`
+3. Environment:
+
+| Variable | Value |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | Neon connection string |
+| `JWT_SECRET` | long random string (Render can generate) |
+| `JWT_EXPIRES_IN` | `7d` |
+| `FRONTEND_URL` | `https://<your-vercel-app>.vercel.app` (no trailing slash) |
+| `BACKEND_URL` | `https://<your-render-service>.onrender.com` |
+| `RESEND_API_KEY` | optional; leave blank to record emails as `FAILED` |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | optional first admin |
+
+4. Deploy. Open `https://<service>.onrender.com/health` — it should return `{ "success": true }`.
+5. Seed once from the Render shell: `npm run db:seed`.
+
+### 3. Frontend (Vercel)
+
+1. [Import the same repo](https://vercel.com/new) on Vercel.
+2. Root directory: `frontend`.
+3. Framework: Vite. Build: `npm run build`. Output: `dist`.
+4. Environment (Production):
+
+| Variable | Value |
+| --- | --- |
+| `VITE_API_URL` | `https://<your-render-service>.onrender.com/api` |
+
+5. Deploy. Copy the Vercel URL into Render `FRONTEND_URL`, then **Manual Deploy** the API once so CORS and cookies allow that origin.
+
+### 4. Check
+
+- Vercel site loads.
+- Sign up / log in. In DevTools → Application → Cookies on the **API host**, `access_token` is HTTP-only. Nothing JWT-like is in `localStorage`.
+- Create-order locality list loads.
+- Preview Gachibowli `500084` → Hitech City `500081` still prices ₹2,095.00.
+
+Do not hardcode localhost in production env vars. Render free web services sleep after idle traffic; the first request after sleep can take ~30s.
 
 ## 19. Sample Credentials
 
