@@ -20,7 +20,13 @@ export function createApp() {
   const configuredOrigins = env.FRONTEND_URL.split(",").map((value) => value.trim()).filter(Boolean);
 
   app.set("trust proxy", 1);
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    }),
+  );
   app.use(
     cors({
       origin(origin, callback) {
