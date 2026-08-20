@@ -253,7 +253,3 @@ Demo path: register as a customer → create B2C COD Gachibowli `500084` → Hit
 - Agent location is last-known point-in-time, not a live GPS stream.
 - Rate cards are zone-pair specific. A route without a matching card is rejected rather than priced from a generic default.
 - JWT is stored in `localStorage` for a simple SPA demo (use httpOnly cookies for higher-sensitivity production).
-
-## License
-
-MIT — built as a project submission / evaluation deliverable.
