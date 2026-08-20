@@ -13,8 +13,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (!error.response) {
+      const target = baseURL.startsWith("http") ? baseURL : "the local API";
       return Promise.reject(
-        new ApiClientError("Cannot reach the API. Start the backend and use the Vite URL shown in the terminal."),
+        new ApiClientError(
+          `Cannot reach ${target}. If that host is Render, wait for it to wake, allow this page origin in FRONTEND_URL, then retry.`,
+        ),
       );
     }
     const payload = error.response.data ?? {};

@@ -7,10 +7,10 @@ import { apiLimiter } from "./middleware/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { registerRoutes } from "./routes/register.js";
 
-function isAllowedOrigin(origin: string | undefined, configured: string[], production: boolean) {
+function isAllowedOrigin(origin: string | undefined, configured: string[]) {
   if (!origin) return true;
   if (configured.includes(origin)) return true;
-  if (!production && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return true;
+  if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return true;
   return false;
 }
 
@@ -24,7 +24,7 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, callback) {
-        callback(null, isAllowedOrigin(origin, configuredOrigins, env.NODE_ENV === "production"));
+        callback(null, isAllowedOrigin(origin, configuredOrigins));
       },
       credentials: true,
     }),
