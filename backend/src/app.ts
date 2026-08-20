@@ -7,11 +7,16 @@ import { apiLimiter } from "./middleware/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { registerRoutes } from "./routes/register.js";
 
-function isAllowedOrigin(origin: string | undefined, configured: string[]) {
+export function isAllowedOrigin(origin: string | undefined, configured: string[]) {
   if (!origin) return true;
   if (configured.includes(origin)) return true;
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return true;
-  return false;
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return protocol === "https:" && (hostname === "vercel.app" || hostname.endsWith(".vercel.app"));
+  } catch {
+    return false;
+  }
 }
 
 export function createApp() {

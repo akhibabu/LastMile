@@ -253,8 +253,8 @@ The GitHub repo is [akhibabu/LastMile](https://github.com/akhibabu/LastMile). Pr
 | `DATABASE_URL` | Neon connection string |
 | `JWT_SECRET` | long random string (Render can generate) |
 | `JWT_EXPIRES_IN` | `7d` |
-| `FRONTEND_URL` | `https://<your-vercel-app>.vercel.app` (no trailing slash) |
-| `BACKEND_URL` | `https://<your-render-service>.onrender.com` |
+| `FRONTEND_URL` | `https://last-mile-frontend.vercel.app` (no trailing slash; comma-separate extra origins) |
+| `BACKEND_URL` | `https://lastmile-api-4xox.onrender.com` |
 | `RESEND_API_KEY` | optional; leave blank to record emails as `FAILED` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | optional first admin |
 
@@ -270,9 +270,9 @@ The GitHub repo is [akhibabu/LastMile](https://github.com/akhibabu/LastMile). Pr
 
 | Variable | Value |
 | --- | --- |
-| `VITE_API_URL` | `https://<your-render-service>.onrender.com/api` |
+| `VITE_API_URL` | `https://lastmile-api-4xox.onrender.com/api` |
 
-5. Deploy. Copy the Vercel URL into Render `FRONTEND_URL`, then **Manual Deploy** the API once so CORS and cookies allow that origin.
+5. Live frontend: [https://last-mile-frontend.vercel.app](https://last-mile-frontend.vercel.app). Put that origin in Render `FRONTEND_URL`, then **Manual Deploy** the API once so CORS allows it. The API also allows `https://*.vercel.app` so preview deployments work.
 
 ### 4. Check
 
