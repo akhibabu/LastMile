@@ -1,0 +1,26 @@
+{
+  "name": "lastmile-delivery-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Last-Mile Delivery Management Platform",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "test": "npm run test -w backend",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "db:reset": "npm run db:reset -w backend",
+    "lint": "npm run lint -w backend --if-present && npm run lint -w frontend --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

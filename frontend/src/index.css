@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-navy: #0c1b2a;
+  --color-navy-2: #163044;
+  --color-ink: #15202b;
+  --color-muted: #5b6773;
+  --color-line: #e3e8ee;
+  --color-page: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-accent: #e56a1a;
+  --color-accent-2: #0f766e;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: #f4f6f8;
+  color: #15202b;
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+.stat-card {
+  background: white;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  background: white;
+}
+
+.table-wrap thead {
+  background: #f4f6f8;
+  color: #5b6773;
+}
+
+.table-wrap tbody tr:hover {
+  background: #f8fafc;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.status-CREATED { background: #eef2f6; color: #35536d; }
+.status-ASSIGNED { background: #e7f1ff; color: #1d4f91; }
+.status-PICKED_UP { background: #fff4e5; color: #9a5b00; }
+.status-IN_TRANSIT { background: #e8f1ff; color: #1d4ed8; }
+.status-OUT_FOR_DELIVERY { background: #e7f6f4; color: #0f766e; }
+.status-DELIVERED { background: #e7f8ea; color: #1d7a36; }
+.status-FAILED { background: #fdecea; color: #b42318; }
+.status-RESCHEDULED { background: #fff7d6; color: #8a6d00; }
+.status-CANCELLED { background: #f1f1f1; color: #555; }
+.status-AVAILABLE { background: #e7f8ea; color: #1d7a36; }
+.status-COMING_SOON { background: #fff4e5; color: #9a5b00; }
+.status-UNAVAILABLE { background: #f1f1f1; color: #555; }
+.status-PENDING { background: #fff7d6; color: #8a6d00; }
+
+@keyframes lm-fade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.lm-pop {
+  animation: lm-fade 180ms ease-out;
+}

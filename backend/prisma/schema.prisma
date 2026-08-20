@@ -1,0 +1,320 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  AGENT
+  ADMIN
+}
+
+enum AgentStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum OrderType {
+  B2B
+  B2C
+}
+
+enum PaymentType {
+  PREPAID
+  COD
+}
+
+enum RateScope {
+  INTRA_ZONE
+  INTER_ZONE
+}
+
+enum OrderStatus {
+  CREATED
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RESCHEDULED
+  CANCELLED
+}
+
+enum FailureReason {
+  CUSTOMER_UNAVAILABLE
+  WRONG_ADDRESS
+  ACCESS_ISSUE
+  CUSTOMER_REFUSED
+  OTHER
+}
+
+enum DeliveryAttemptStatus {
+  FAILED
+  RESCHEDULED
+  SUCCESS
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  LOGGED
+}
+
+enum NotificationEventType {
+  ORDER_CREATED
+  ORDER_ASSIGNED
+  ORDER_PICKED_UP
+  ORDER_IN_TRANSIT
+  ORDER_OUT_FOR_DELIVERY
+  ORDER_DELIVERED
+  ORDER_FAILED
+  ORDER_RESCHEDULED
+  ORDER_CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customerProfile CustomerProfile?
+  agentProfile    AgentProfile?
+  notifications   Notification[]
+  statusHistory   OrderStatusHistory[]
+  orders          Order[]              @relation("CustomerOrders")
+  reschedules     RescheduleRequest[]
+}
+
+model CustomerProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address   String?
+  city      String?
+  pincode   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AgentProfile {
+  id                String      @id @default(cuid())
+  userId            String      @unique
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            AgentStatus @default(OFFLINE)
+  currentLatitude   Float?
+  currentLongitude  Float?
+  currentZoneId     String?
+  currentZone       Zone?       @relation(fields: [currentZoneId], references: [id])
+  isAvailable       Boolean     @default(false)
+  locationUpdatedAt DateTime?
+  maxActiveOrders   Int         @default(5)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  assignedOrders Order[]            @relation("AssignedAgent")
+  locations      AgentLocation[]
+  attempts       DeliveryAttempt[]
+}
+
+model Zone {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  centroidLat Float?
+  centroidLng Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  areas           ZoneArea[]
+  agents          AgentProfile[]
+  pickupOrders    Order[]        @relation("PickupZone")
+  dropOrders      Order[]        @relation("DropZone")
+  sourceRateCards RateCard[]     @relation("SourceZone")
+  destRateCards   RateCard[]     @relation("DestZone")
+}
+
+model ZoneArea {
+  id        String   @id @default(cuid())
+  zoneId    String
+  zone      Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  pincode   String?
+  areaName  String?
+  city      String?
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+
+  @@index([pincode])
+  @@index([areaName])
+  @@index([zoneId])
+}
+
+model RateCard {
+  id                      String    @id @default(cuid())
+  name                    String
+  orderType               OrderType
+  rateScope               RateScope
+  sourceZoneId            String?
+  sourceZone              Zone?     @relation("SourceZone", fields: [sourceZoneId], references: [id])
+  destinationZoneId       String?
+  destinationZone         Zone?     @relation("DestZone", fields: [destinationZoneId], references: [id])
+  baseRate                Decimal   @db.Decimal(10, 2)
+  perKgRate               Decimal   @db.Decimal(10, 2)
+  minimumChargeableWeight Decimal   @default(0.5) @db.Decimal(10, 3)
+  volumetricDivisor       Int       @default(5000)
+  codSurcharge            Decimal   @default(0) @db.Decimal(10, 2)
+  active                  Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([orderType, rateScope, active])
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  orderNumber           String      @unique
+  customerId            String
+  customer              User        @relation("CustomerOrders", fields: [customerId], references: [id])
+  assignedAgentId       String?
+  assignedAgent         AgentProfile? @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
+  pickupAddress         String
+  pickupPincode         String?
+  pickupLatitude        Float?
+  pickupLongitude       Float?
+  dropAddress           String
+  dropPincode           String?
+  dropLatitude          Float?
+  dropLongitude         Float?
+  pickupZoneId          String?
+  pickupZone            Zone?       @relation("PickupZone", fields: [pickupZoneId], references: [id])
+  dropZoneId            String?
+  dropZone              Zone?       @relation("DropZone", fields: [dropZoneId], references: [id])
+  length                Decimal     @db.Decimal(10, 2)
+  breadth               Decimal     @db.Decimal(10, 2)
+  height                Decimal     @db.Decimal(10, 2)
+  actualWeight          Decimal     @db.Decimal(10, 3)
+  volumetricWeight      Decimal     @db.Decimal(10, 3)
+  billableWeight        Decimal     @db.Decimal(10, 3)
+  orderType             OrderType
+  paymentType           PaymentType
+  rateCardId            String?
+  baseCharge            Decimal     @db.Decimal(10, 2)
+  perKgRate             Decimal     @db.Decimal(10, 2)
+  shippingCharge        Decimal     @db.Decimal(10, 2)
+  codSurcharge          Decimal     @db.Decimal(10, 2)
+  totalCharge           Decimal     @db.Decimal(10, 2)
+  status                OrderStatus @default(CREATED)
+  scheduledDeliveryDate DateTime?
+  notes                 String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  statusHistory OrderStatusHistory[]
+  attempts      DeliveryAttempt[]
+  notifications Notification[]
+  reschedules   RescheduleRequest[]
+
+  @@index([customerId])
+  @@index([assignedAgentId])
+  @@index([status])
+  @@index([pickupZoneId])
+  @@index([dropZoneId])
+  @@index([createdAt])
+  @@index([orderType])
+  @@index([paymentType])
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  actorId   String?
+  actor     User?       @relation(fields: [actorId], references: [id])
+  timestamp DateTime    @default(now())
+  note      String?
+  metadata  Json?
+
+  @@index([orderId, timestamp])
+}
+
+model AgentLocation {
+  id         String       @id @default(cuid())
+  agentId    String
+  agent      AgentProfile @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  latitude   Float
+  longitude  Float
+  recordedAt DateTime     @default(now())
+
+  @@index([agentId, recordedAt])
+}
+
+model DeliveryAttempt {
+  id              String                 @id @default(cuid())
+  orderId         String
+  order           Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  agentId         String?
+  agent           AgentProfile?          @relation(fields: [agentId], references: [id])
+  attemptNumber   Int
+  status          DeliveryAttemptStatus
+  reason          FailureReason?
+  notes           String?
+  attemptedAt     DateTime               @default(now())
+  rescheduledDate DateTime?
+
+  @@index([orderId])
+}
+
+model RescheduleRequest {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User     @relation(fields: [requestedById], references: [id])
+  previousDate  DateTime?
+  newDate       DateTime
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model Notification {
+  id                String                 @id @default(cuid())
+  userId            String
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId           String?
+  order             Order?                 @relation(fields: [orderId], references: [id])
+  channel           NotificationChannel
+  eventType         NotificationEventType
+  recipient         String
+  subject           String?
+  body              String
+  status            NotificationStatus     @default(PENDING)
+  providerMessageId String?
+  errorMessage      String?
+  createdAt         DateTime               @default(now())
+
+  @@index([userId, createdAt])
+  @@index([orderId])
+}
