@@ -39,6 +39,18 @@ export function createApp() {
   app.use(cookieParser());
   app.use("/api", apiLimiter);
 
+  app.get("/", (_req, res) => {
+    res.json({
+      success: true,
+      message: "LastMile API",
+      data: {
+        health: "/health",
+        docs: "/api/docs",
+        config: "/api/config",
+      },
+    });
+  });
+
   app.get("/health", (_req, res) => {
     res.json({ success: true, data: { status: "ok" }, message: "LastMile API" });
   });
