@@ -183,11 +183,13 @@ model RateCard {
   minimumChargeableWeight Decimal   @default(0.5) @db.Decimal(10, 3)
   volumetricDivisor       Int       @default(5000)
   codSurcharge            Decimal   @default(0) @db.Decimal(10, 2)
+  isFallback              Boolean   @default(false)
   active                  Boolean   @default(true)
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
   @@index([orderType, rateScope, active])
+  @@index([orderType, rateScope, isFallback, active])
 }
 
 model Order {
@@ -314,6 +316,7 @@ model Notification {
   providerMessageId String?
   errorMessage      String?
   createdAt         DateTime               @default(now())
+  sentAt            DateTime?
 
   @@index([userId, createdAt])
   @@index([orderId])

@@ -1,7 +1,10 @@
-import type { NotificationEventType, OrderStatus } from "@prisma/client";
+import type { NotificationEventType, NotificationStatus, OrderStatus } from "@prisma/client";
 import { prisma } from "../config/prisma.js";
 import { logger } from "../config/logger.js";
-import { createEmailProvider } from "./email/index.js";
+import { AppError, NotFoundError } from "../utils/errors.js";
+import { createEmailService } from "./email/index.js";
+import { renderOrderEmail } from "./email/templates.js";
+import { loadEnv } from "../config/env.js";
 
 const STATUS_EVENT_MAP: Partial<Record<OrderStatus, NotificationEventType>> = {
   CREATED: "ORDER_CREATED",
@@ -15,50 +18,8 @@ const STATUS_EVENT_MAP: Partial<Record<OrderStatus, NotificationEventType>> = {
   CANCELLED: "ORDER_CANCELLED",
 };
 
-function buildCopy(eventType: NotificationEventType, orderNumber: string, extra?: string) {
-  const messages: Record<NotificationEventType, { subject: string; body: string }> = {
-    ORDER_CREATED: {
-      subject: `Order ${orderNumber} confirmed`,
-      body: `Your delivery ${orderNumber} has been created and is awaiting assignment.`,
-    },
-    ORDER_ASSIGNED: {
-      subject: `Order ${orderNumber} assigned`,
-      body: `A delivery agent has been assigned to ${orderNumber}.`,
-    },
-    ORDER_PICKED_UP: {
-      subject: `Order ${orderNumber} picked up`,
-      body: `Your package ${orderNumber} has been picked up.`,
-    },
-    ORDER_IN_TRANSIT: {
-      subject: `Order ${orderNumber} in transit`,
-      body: `Your package ${orderNumber} is on the way.`,
-    },
-    ORDER_OUT_FOR_DELIVERY: {
-      subject: `Order ${orderNumber} out for delivery`,
-      body: `Your package ${orderNumber} is out for delivery today.`,
-    },
-    ORDER_DELIVERED: {
-      subject: `Order ${orderNumber} delivered`,
-      body: `Your package ${orderNumber} has been delivered.`,
-    },
-    ORDER_FAILED: {
-      subject: `Delivery failed for ${orderNumber}`,
-      body: `The delivery attempt for ${orderNumber} failed.${extra ? ` Reason: ${extra}` : ""} You can reschedule from your dashboard.`,
-    },
-    ORDER_RESCHEDULED: {
-      subject: `Order ${orderNumber} rescheduled`,
-      body: `Your delivery ${orderNumber} has been rescheduled.${extra ? ` ${extra}` : ""}`,
-    },
-    ORDER_CANCELLED: {
-      subject: `Order ${orderNumber} cancelled`,
-      body: `Your order ${orderNumber} has been cancelled.`,
-    },
-  };
-  return messages[eventType];
-}
-
 export class NotificationService {
-  private readonly email = createEmailProvider();
+  private readonly email = createEmailService();
 
   async sendStatusNotification(orderId: string, status: OrderStatus, extra?: string) {
     const eventType = STATUS_EVENT_MAP[status];
@@ -70,14 +31,24 @@ export class NotificationService {
     });
     if (!order) return;
 
-    const copy = buildCopy(eventType, order.orderNumber, extra);
+    const env = loadEnv();
+    const rendered = renderOrderEmail(eventType, {
+      appName: env.FROM_NAME || "LastMile",
+      customerName: order.customer.name,
+      orderNumber: order.orderNumber,
+      pickup: order.pickupAddress,
+      drop: order.dropAddress,
+      extra,
+    });
+
     await this.dispatch({
       userId: order.customerId,
       orderId: order.id,
       eventType,
       recipient: order.customer.email,
-      subject: copy.subject,
-      body: copy.body,
+      subject: rendered.subject,
+      body: rendered.text,
+      html: rendered.html,
     });
   }
 
@@ -88,49 +59,85 @@ export class NotificationService {
     recipient: string;
     subject: string;
     body: string;
+    html?: string;
+    notificationId?: string;
   }) {
-    const record = await prisma.notification.create({
-      data: {
-        userId: input.userId,
-        orderId: input.orderId ?? null,
-        channel: "EMAIL",
-        eventType: input.eventType,
-        recipient: input.recipient,
+    const record = input.notificationId
+      ? await prisma.notification.update({
+          where: { id: input.notificationId },
+          data: {
+            status: "PENDING",
+            errorMessage: null,
+          },
+        })
+      : await prisma.notification.create({
+          data: {
+            userId: input.userId,
+            orderId: input.orderId ?? null,
+            channel: "EMAIL",
+            eventType: input.eventType,
+            recipient: input.recipient,
+            subject: input.subject,
+            body: input.body,
+            status: "PENDING",
+          },
+        });
+
+    let result;
+    try {
+      result = await this.email.send({
+        to: input.recipient,
         subject: input.subject,
-        body: input.body,
-        status: "PENDING",
-      },
-    });
+        text: input.body,
+        html: input.html,
+      });
+    } catch (error) {
+      result = {
+        ok: false,
+        provider: "unknown",
+        error: error instanceof Error ? error.message : "Unknown email error",
+        devMode: false,
+      };
+    }
 
-    const result = await this.email.send({
-      to: input.recipient,
-      subject: input.subject,
-      text: input.body,
-    });
-
-    const status = result.ok ? (result.devMode ? "LOGGED" : "SENT") : "FAILED";
-    await prisma.notification.update({
+    const status: NotificationStatus = result.ok ? (result.devMode ? "LOGGED" : "SENT") : "FAILED";
+    const updated = await prisma.notification.update({
       where: { id: record.id },
       data: {
         status,
         providerMessageId: result.messageId,
-        errorMessage: result.error,
+        errorMessage: result.error ?? null,
+        sentAt: status === "SENT" ? new Date() : null,
       },
     });
 
-    if (result.ok) {
-      logger.info(
-        { notificationId: record.id, eventType: input.eventType, status },
-        "notification sent",
-      );
+    if (status === "SENT") {
+      logger.info({ notificationId: record.id, eventType: input.eventType, status }, "notification sent");
+    } else if (status === "LOGGED") {
+      logger.info({ notificationId: record.id, eventType: input.eventType, status }, "notification logged in development");
     } else {
-      logger.error(
-        { notificationId: record.id, error: result.error },
-        "notification failure",
-      );
+      logger.error({ notificationId: record.id, error: result.error }, "notification failure");
     }
 
-    return { ...record, status, providerMessageId: result.messageId };
+    return updated;
+  }
+
+  async retry(notificationId: string) {
+    const record = await prisma.notification.findUnique({ where: { id: notificationId } });
+    if (!record) throw new NotFoundError("Notification not found");
+    if (record.status !== "FAILED") {
+      throw new AppError("Only failed notifications can be retried", 422, "NOTIFICATION_NOT_RETRYABLE");
+    }
+
+    return this.dispatch({
+      userId: record.userId,
+      orderId: record.orderId,
+      eventType: record.eventType,
+      recipient: record.recipient,
+      subject: record.subject ?? "LastMile delivery update",
+      body: record.body,
+      notificationId: record.id,
+    });
   }
 
   async listForUser(userId: string, role: string) {

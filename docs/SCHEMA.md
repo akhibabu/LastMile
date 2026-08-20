@@ -16,4 +16,4 @@ Order 1──* Notification
 AgentProfile 1──* AgentLocation
 ```
 
-History rows are never updated or deleted by application code. Rate amounts and the volumetric divisor live on `RateCard`, not in source constants (except the documented default of 5000).
+History rows are never updated or deleted by application code. Rate amounts and the volumetric divisor live on `RateCard`, not in source constants (except the documented default of 5000). `RateCard.isFallback` marks an explicit intra/inter-zone fallback. `Notification.sentAt` is set only when Resend confirms delivery.

@@ -15,6 +15,19 @@ export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
+export function formatAge(value?: string | number | Date | null) {
+  if (value == null) return "never";
+  const timestamp = typeof value === "number" ? Date.now() - value : new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "never";
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds} seconds ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+}
+
 export function homeForRole(role: string) {
   if (role === "ADMIN") return "/admin";
   if (role === "AGENT") return "/agent";

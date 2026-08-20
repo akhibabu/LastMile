@@ -17,6 +17,14 @@ export interface RateCardLike {
   volumetricDivisor: number;
   codSurcharge: number;
   active: boolean;
+  isFallback?: boolean;
+}
+
+export type RateResolutionType = "EXACT_ZONE_PAIR" | "INTRA_ZONE_FALLBACK" | "INTER_ZONE_FALLBACK";
+
+export interface RateSelection {
+  card: RateCardLike;
+  resolutionType: RateResolutionType;
 }
 
 export interface PricingInput {
@@ -52,6 +60,7 @@ export interface PricingBreakdown {
   weightCharge: number;
   codSurcharge: number;
   totalCharge: number;
+  resolutionType: RateResolutionType;
 }
 
 export function roundTo(value: number, decimals: number): number {
@@ -113,15 +122,33 @@ export function selectRateCard(
   rateScope: RateScope,
   pickupZoneId: string,
   dropZoneId: string,
-): RateCardLike | null {
+): RateSelection | null {
   const eligible = cards.filter(
     (card) => card.active && card.orderType === orderType && card.rateScope === rateScope,
   );
 
   const exact = eligible.find(
-    (card) => card.sourceZoneId === pickupZoneId && card.destinationZoneId === dropZoneId,
+    (card) =>
+      card.isFallback !== true &&
+      card.sourceZoneId === pickupZoneId &&
+      card.destinationZoneId === dropZoneId,
   );
-  if (exact) return exact;
+  if (exact) {
+    return { card: exact, resolutionType: "EXACT_ZONE_PAIR" };
+  }
+
+  const fallback = eligible.find(
+    (card) =>
+      card.isFallback === true &&
+      card.sourceZoneId == null &&
+      card.destinationZoneId == null,
+  );
+  if (fallback) {
+    return {
+      card: fallback,
+      resolutionType: rateScope === "INTRA_ZONE" ? "INTRA_ZONE_FALLBACK" : "INTER_ZONE_FALLBACK",
+    };
+  }
 
   return null;
 }
@@ -129,6 +156,7 @@ export function selectRateCard(
 export function buildPricingBreakdown(
   input: PricingInput,
   rateCard: RateCardLike,
+  resolutionType: RateResolutionType = "EXACT_ZONE_PAIR",
 ): PricingBreakdown {
   const divisor = rateCard.volumetricDivisor || DEFAULT_VOLUMETRIC_DIVISOR;
   const volumetricWeight = calculateVolumetricWeight(
@@ -178,5 +206,6 @@ export function buildPricingBreakdown(
     weightCharge,
     codSurcharge,
     totalCharge,
+    resolutionType,
   };
 }

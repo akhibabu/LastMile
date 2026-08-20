@@ -9,10 +9,14 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().default("http://localhost:5173"),
   BACKEND_URL: z.string().default("http://localhost:4000"),
   EMAIL_PROVIDER: z.enum(["resend", "sendgrid", "mailgun", "dev"]).default("dev"),
+  RESEND_API_KEY: z.string().optional().default(""),
   EMAIL_API_KEY: z.string().optional().default(""),
   FROM_EMAIL: z.string().default("noreply@lastmile.local"),
+  FROM_NAME: z.string().default("LastMile"),
   GEOCODING_USER_AGENT: z.string().default("LastMileDelivery/1.0"),
   GEOCODING_API_KEY: z.string().optional().default(""),
+  LOCATION_UPDATE_INTERVAL: z.coerce.number().int().positive().default(30_000),
+  LOCATION_STALE_THRESHOLD: z.coerce.number().int().positive().default(300_000),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -31,3 +35,7 @@ export function loadEnv(): Env {
 }
 
 export const isProduction = () => loadEnv().NODE_ENV === "production";
+
+export function resendApiKey(env: Env = loadEnv()): string {
+  return env.RESEND_API_KEY || env.EMAIL_API_KEY || "";
+}

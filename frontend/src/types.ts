@@ -34,8 +34,19 @@ export interface AgentProfile {
   currentLongitude?: number | null;
   currentZoneId?: string | null;
   locationUpdatedAt?: string | null;
+  locationFresh?: boolean;
+  locationAgeMs?: number | null;
+  locationStatus?: "FRESH" | "STALE" | "UNAVAILABLE";
   currentZone?: Zone | null;
   user?: { id: string; name: string; email: string; phone?: string | null };
+  assignedOrders?: Array<{
+    id: string;
+    orderNumber: string;
+    status: string;
+    pickupAddress?: string;
+    pickupLatitude?: number | null;
+    pickupLongitude?: number | null;
+  }>;
 }
 
 export interface Zone {
@@ -69,6 +80,7 @@ export interface RateCard {
   volumetricDivisor: number;
   codSurcharge: string | number;
   active: boolean;
+  isFallback?: boolean;
   sourceZone?: Zone | null;
   destinationZone?: Zone | null;
 }
@@ -106,6 +118,7 @@ export interface PriceQuote {
   volumetricWeight: number;
   billableWeight: number;
   rateCardName: string;
+  resolutionType?: "EXACT_ZONE_PAIR" | "INTRA_ZONE_FALLBACK" | "INTER_ZONE_FALLBACK";
   baseRate: number;
   perKgRate: number;
   shippingCharge: number;
@@ -185,6 +198,7 @@ export interface NotificationItem {
   body: string;
   status: string;
   recipient: string;
+  errorMessage?: string | null;
   createdAt: string;
   order?: { orderNumber: string } | null;
 }

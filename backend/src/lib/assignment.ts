@@ -12,6 +12,7 @@ export interface AssignableAgent {
   currentLatitude: number | null;
   currentLongitude: number | null;
   currentZoneId: string | null;
+  locationUpdatedAt: Date | null;
   activeOrderCount: number;
   maxActiveOrders: number;
 }
@@ -21,13 +22,20 @@ export type AssignmentReason =
   | "SAME_ZONE_FALLBACK"
   | "ANY_AVAILABLE_FALLBACK";
 
+export interface AssignmentOptions {
+  staleThresholdMs?: number;
+  now?: number;
+}
+
 export interface AssignmentResult {
   agent: AssignableAgent;
   distanceKm: number | null;
   reason: AssignmentReason;
+  locationFresh: boolean;
 }
 
 const EARTH_RADIUS_KM = 6371;
+export const DEFAULT_LOCATION_STALE_THRESHOLD_MS = 300_000;
 
 function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
@@ -56,10 +64,34 @@ export function isAgentEligible(agent: AssignableAgent): boolean {
   );
 }
 
+export function isLocationFresh(
+  updatedAt: Date | string | null | undefined,
+  staleThresholdMs: number,
+  now = Date.now(),
+): boolean {
+  if (!updatedAt) return false;
+  const timestamp = updatedAt instanceof Date ? updatedAt.getTime() : new Date(updatedAt).getTime();
+  if (!Number.isFinite(timestamp)) return false;
+  return now - timestamp <= staleThresholdMs;
+}
+
+function hasCoordinates(agent: AssignableAgent): boolean {
+  return (
+    agent.currentLatitude !== null &&
+    agent.currentLongitude !== null &&
+    Number.isFinite(agent.currentLatitude) &&
+    Number.isFinite(agent.currentLongitude)
+  );
+}
+
 export function selectNearestAgent(
   agents: AssignableAgent[],
   pickup: { latitude: number | null; longitude: number | null; zoneId: string | null },
+  options: AssignmentOptions = {},
 ): AssignmentResult | null {
+  const staleThresholdMs = options.staleThresholdMs ?? DEFAULT_LOCATION_STALE_THRESHOLD_MS;
+  const now = options.now ?? Date.now();
+
   const eligible = agents
     .filter(isAgentEligible)
     .slice()
@@ -75,16 +107,12 @@ export function selectNearestAgent(
     Number.isFinite(pickup.latitude) &&
     Number.isFinite(pickup.longitude);
 
-  const withCoords = eligible.filter(
-    (agent) =>
-      agent.currentLatitude !== null &&
-      agent.currentLongitude !== null &&
-      Number.isFinite(agent.currentLatitude) &&
-      Number.isFinite(agent.currentLongitude),
+  const withFreshCoords = eligible.filter(
+    (agent) => hasCoordinates(agent) && isLocationFresh(agent.locationUpdatedAt, staleThresholdMs, now),
   );
 
-  if (pickupHasCoords && withCoords.length > 0) {
-    const ranked = withCoords
+  if (pickupHasCoords && withFreshCoords.length > 0) {
+    const ranked = withFreshCoords
       .map((agent) => ({
         agent,
         distanceKm: haversineKm(
@@ -104,6 +132,7 @@ export function selectNearestAgent(
       agent: winner.agent,
       distanceKm: Math.round(winner.distanceKm * 1000) / 1000,
       reason: "NEAREST_GEOGRAPHIC",
+      locationFresh: true,
     };
   }
 
@@ -114,6 +143,7 @@ export function selectNearestAgent(
         agent: sameZone[0],
         distanceKm: null,
         reason: "SAME_ZONE_FALLBACK",
+        locationFresh: isLocationFresh(sameZone[0].locationUpdatedAt, staleThresholdMs, now),
       };
     }
   }
@@ -122,5 +152,6 @@ export function selectNearestAgent(
     agent: eligible[0],
     distanceKm: null,
     reason: "ANY_AVAILABLE_FALLBACK",
+    locationFresh: isLocationFresh(eligible[0].locationUpdatedAt, staleThresholdMs, now),
   };
 }

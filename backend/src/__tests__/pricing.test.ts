@@ -224,7 +224,7 @@ describe("pricing engine", () => {
     expect(selected).toBeNull();
   });
 
-  it("does not use a generic null/null fallback rate card", () => {
+  it("does not use a generic null/null card unless it is an explicit fallback", () => {
     const selected = selectRateCard([globalFallback], "B2C", "INTER_ZONE", "z-west", "z-central");
     expect(selected).toBeNull();
   });
@@ -237,7 +237,31 @@ describe("pricing engine", () => {
       destinationZoneId: "z-east",
     };
     const selected = selectRateCard([globalFallback, otherPair, interB2C], "B2C", "INTER_ZONE", "z-west", "z-central");
-    expect(selected?.id).toBe("rc-b2c-inter");
+    expect(selected?.card.id).toBe("rc-b2c-inter");
+    expect(selected?.resolutionType).toBe("EXACT_ZONE_PAIR");
+  });
+
+  it("uses an explicit inter-zone fallback when no exact pair exists", () => {
+    const fallback: RateCardLike = {
+      ...globalFallback,
+      id: "rc-fallback",
+      name: "B2C Inter-Zone Fallback",
+      isFallback: true,
+    };
+    const selected = selectRateCard([fallback], "B2C", "INTER_ZONE", "z-west", "z-central");
+    expect(selected?.card.id).toBe("rc-fallback");
+    expect(selected?.resolutionType).toBe("INTER_ZONE_FALLBACK");
+  });
+
+  it("prefers an exact zone pair over an explicit fallback", () => {
+    const fallback: RateCardLike = {
+      ...globalFallback,
+      id: "rc-fallback",
+      isFallback: true,
+    };
+    const selected = selectRateCard([fallback, interB2C], "B2C", "INTER_ZONE", "z-west", "z-central");
+    expect(selected?.card.id).toBe("rc-b2c-inter");
+    expect(selected?.resolutionType).toBe("EXACT_ZONE_PAIR");
   });
 
   it("returns a complete breakdown with all required fields", () => {

@@ -10,6 +10,7 @@ const blank = {
   name: "",
   orderType: "B2C",
   rateScope: "INTER_ZONE",
+  isFallback: false,
   sourceZoneId: "",
   destinationZoneId: "",
   baseRate: "85",
@@ -19,6 +20,17 @@ const blank = {
   codSurcharge: "50",
   active: true,
 };
+
+function cardKind(card: RateCard) {
+  return card.isFallback ? "FALLBACK" : "EXACT ROUTE";
+}
+
+function routeLabel(card: RateCard) {
+  if (card.isFallback) {
+    return `${card.orderType} ${card.rateScope === "INTRA_ZONE" ? "INTRA_ZONE" : "INTER_ZONE"}`;
+  }
+  return `${card.sourceZone?.code ?? "—"} → ${card.destinationZone?.code ?? "—"}`;
+}
 
 export function AdminRateCardsPage() {
   const qc = useQueryClient();
@@ -37,11 +49,20 @@ export function AdminRateCardsPage() {
       const source = activeZones.find((zone) => zone.id === form.sourceZoneId);
       const dest = activeZones.find((zone) => zone.id === form.destinationZoneId);
       const payload = {
-        name: form.name.trim() || `${form.orderType} ${source?.code ?? "SRC"} → ${dest?.code ?? "DST"}`,
+        name:
+          form.name.trim() ||
+          (form.isFallback
+            ? `${form.orderType} ${form.rateScope === "INTRA_ZONE" ? "Intra-zone" : "Inter-zone"} fallback`
+            : `${form.orderType} ${source?.code ?? "SRC"} → ${dest?.code ?? "DST"}`),
         orderType: form.orderType,
         rateScope: form.rateScope,
-        sourceZoneId: form.sourceZoneId,
-        destinationZoneId: form.rateScope === "INTRA_ZONE" ? form.sourceZoneId : form.destinationZoneId,
+        isFallback: form.isFallback,
+        sourceZoneId: form.isFallback ? null : form.sourceZoneId,
+        destinationZoneId: form.isFallback
+          ? null
+          : form.rateScope === "INTRA_ZONE"
+            ? form.sourceZoneId
+            : form.destinationZoneId,
         baseRate: Number(form.baseRate),
         perKgRate: Number(form.perKgRate),
         minimumChargeableWeight: Number(form.minimumChargeableWeight),
@@ -79,6 +100,7 @@ export function AdminRateCardsPage() {
       name: card.name,
       orderType: card.orderType,
       rateScope: card.rateScope,
+      isFallback: Boolean(card.isFallback),
       sourceZoneId: card.sourceZoneId ?? "",
       destinationZoneId: card.destinationZoneId ?? "",
       baseRate: String(card.baseRate),
@@ -94,15 +116,17 @@ export function AdminRateCardsPage() {
   function patch<K extends keyof typeof blank>(key: K, value: (typeof blank)[K]) {
     setForm((current) => {
       const next = { ...current, [key]: value };
-      if (key === "rateScope" && value === "INTRA_ZONE") {
+      if (key === "rateScope" && value === "INTRA_ZONE" && !next.isFallback) {
         next.destinationZoneId = next.sourceZoneId;
       }
-      if (key === "sourceZoneId" && next.rateScope === "INTRA_ZONE") {
+      if (key === "sourceZoneId" && next.rateScope === "INTRA_ZONE" && !next.isFallback) {
         next.destinationZoneId = String(value);
       }
       return next;
     });
   }
+
+  const canSave = form.isFallback || (form.sourceZoneId && (form.rateScope === "INTRA_ZONE" || form.destinationZoneId));
 
   return (
     <div className="space-y-4">
@@ -110,8 +134,7 @@ export function AdminRateCardsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Rate cards</h1>
           <p className="text-sm text-[#5c6b78]">
-            Each card is a specific route: order type, intra/inter, source zone, and destination zone. Pricing never
-            falls back to a generic default.
+            Exact zone-pair cards are used first. An explicit intra-zone or inter-zone fallback is used only when no exact route exists. There is no hidden default price.
           </p>
         </div>
         <Button onClick={openCreate}>New rate card</Button>
@@ -121,11 +144,11 @@ export function AdminRateCardsPage() {
           <thead>
             <tr>
               <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Kind</th>
               <th className="px-4 py-3">Route</th>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Base / kg</th>
               <th className="px-4 py-3">COD</th>
-              <th className="px-4 py-3">Divisor</th>
               <th className="px-4 py-3">Active</th>
             </tr>
           </thead>
@@ -138,8 +161,11 @@ export function AdminRateCardsPage() {
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  {card.sourceZone?.code ?? "—"} → {card.destinationZone?.code ?? "—"}
+                  <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${card.isFallback ? "bg-[#fff4e5] text-[#9a5b00]" : "bg-[#e7f6f4] text-[#0f766e]"}`}>
+                    {cardKind(card)}
+                  </span>
                 </td>
+                <td className="px-4 py-3">{routeLabel(card)}</td>
                 <td className="px-4 py-3">
                   {card.orderType} {card.rateScope === "INTRA_ZONE" ? "Intra-zone" : "Inter-zone"}
                 </td>
@@ -147,7 +173,6 @@ export function AdminRateCardsPage() {
                   {inr(card.baseRate)} + {inr(card.perKgRate)}/kg
                 </td>
                 <td className="px-4 py-3">{inr(card.codSurcharge)}</td>
-                <td className="px-4 py-3">{card.volumetricDivisor}</td>
                 <td className="px-4 py-3">
                   <button className="text-sm font-semibold text-[#0f9d8e]" onClick={() => toggle.mutate(card)}>
                     {card.active ? "Deactivate" : "Activate"}
@@ -161,7 +186,17 @@ export function AdminRateCardsPage() {
       {open ? (
         <Modal title={editing ? "Edit rate card" : "Create rate card"} onClose={() => setOpen(false)}>
           <div className="space-y-3">
-            <Field label="Name" hint="Leave blank to auto-name from the route.">
+            <Field label="Card kind">
+              <select
+                className={inputClass()}
+                value={form.isFallback ? "FALLBACK" : "EXACT"}
+                onChange={(e) => patch("isFallback", e.target.value === "FALLBACK")}
+              >
+                <option value="EXACT">EXACT ROUTE</option>
+                <option value="FALLBACK">FALLBACK</option>
+              </select>
+            </Field>
+            <Field label="Name" hint="Leave blank to auto-name from the route or fallback scope.">
               <input className={inputClass()} value={form.name} onChange={(e) => patch("name", e.target.value)} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -178,32 +213,40 @@ export function AdminRateCardsPage() {
                 </select>
               </Field>
             </div>
-            <Field label="Source zone">
-              <select className={inputClass()} value={form.sourceZoneId} onChange={(e) => patch("sourceZoneId", e.target.value)} required>
-                <option value="">Select source zone</option>
-                {activeZones.map((zone) => (
-                  <option key={zone.id} value={zone.id}>
-                    {zone.code} · {zone.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Destination zone">
-              <select
-                className={inputClass()}
-                value={form.rateScope === "INTRA_ZONE" ? form.sourceZoneId : form.destinationZoneId}
-                onChange={(e) => patch("destinationZoneId", e.target.value)}
-                required
-                disabled={form.rateScope === "INTRA_ZONE"}
-              >
-                <option value="">Select destination zone</option>
-                {activeZones.map((zone) => (
-                  <option key={zone.id} value={zone.id}>
-                    {zone.code} · {zone.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {form.isFallback ? (
+              <p className="rounded-md bg-[#fff4e5] px-3 py-2 text-sm text-[#9a5b00]">
+                This fallback applies to every {form.orderType} {form.rateScope === "INTRA_ZONE" ? "intra-zone" : "inter-zone"} route that has no exact zone-pair card.
+              </p>
+            ) : (
+              <>
+                <Field label="Source zone">
+                  <select className={inputClass()} value={form.sourceZoneId} onChange={(e) => patch("sourceZoneId", e.target.value)} required>
+                    <option value="">Select source zone</option>
+                    {activeZones.map((zone) => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.code} · {zone.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Destination zone">
+                  <select
+                    className={inputClass()}
+                    value={form.rateScope === "INTRA_ZONE" ? form.sourceZoneId : form.destinationZoneId}
+                    onChange={(e) => patch("destinationZoneId", e.target.value)}
+                    required
+                    disabled={form.rateScope === "INTRA_ZONE"}
+                  >
+                    <option value="">Select destination zone</option>
+                    {activeZones.map((zone) => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.code} · {zone.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </>
+            )}
             <Field label="Base rate">
               <input className={inputClass()} value={form.baseRate} onChange={(e) => patch("baseRate", e.target.value)} />
             </Field>
@@ -227,7 +270,7 @@ export function AdminRateCardsPage() {
                 onChange={(e) => patch("volumetricDivisor", e.target.value)}
               />
             </Field>
-            <Button className="w-full" onClick={() => save.mutate()} disabled={!form.sourceZoneId || (form.rateScope === "INTER_ZONE" && !form.destinationZoneId)}>
+            <Button className="w-full" onClick={() => save.mutate()} disabled={!canSave}>
               Save
             </Button>
           </div>

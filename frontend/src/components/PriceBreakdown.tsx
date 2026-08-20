@@ -7,6 +7,12 @@ export function PriceBreakdown({ quote }: { quote: PriceQuote }) {
   const pickupPincode = quote.pickup?.pincode;
   const dropPincode = quote.drop?.pincode;
   const rateLabel = `${quote.orderType} • ${quote.zoneScope === "INTRA_ZONE" ? "Intra-zone" : "Inter-zone"}`;
+  const resolutionLabel =
+    quote.resolutionType === "INTER_ZONE_FALLBACK"
+      ? "Inter-zone fallback"
+      : quote.resolutionType === "INTRA_ZONE_FALLBACK"
+        ? "Intra-zone fallback"
+        : "Exact route rate";
 
   return (
     <div className="overflow-hidden rounded-[10px] border border-line bg-white">
@@ -53,6 +59,9 @@ export function PriceBreakdown({ quote }: { quote: PriceQuote }) {
 
       <div className="px-5 py-4">
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Rate</p>
+        <p className="mb-1 text-sm font-medium text-ink">
+          Rate selection: {resolutionLabel}
+        </p>
         <p className="mb-3 text-sm font-medium text-ink">
           {rateLabel}
           <span className="ml-2 font-normal text-muted">{quote.rateCardName}</span>

@@ -4,7 +4,6 @@ import type { User } from "../types";
 
 interface AuthContextValue {
   user: User | null;
-  token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
   register: (payload: Record<string, string>) => Promise<User>;
@@ -20,47 +19,35 @@ async function fetchCurrentUser(): Promise<User> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("lastmile_token"));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    localStorage.removeItem("lastmile_token");
     async function boot() {
-      if (!token) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
       try {
         setUser(await fetchCurrentUser());
       } catch {
-        localStorage.removeItem("lastmile_token");
-        setToken(null);
         setUser(null);
       } finally {
         setLoading(false);
       }
     }
     void boot();
-  }, [token]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      token,
       loading,
       login: async (email, password) => {
         const res = await api.post("/auth/login", { email, password });
-        localStorage.setItem("lastmile_token", res.data.data.token);
-        setToken(res.data.data.token);
-        const profile = await fetchCurrentUser();
+        const profile = (res.data.data?.user as User | undefined) ?? (await fetchCurrentUser());
         setUser(profile);
         return profile;
       },
       register: async (payload) => {
         const res = await api.post("/auth/register", payload);
-        localStorage.setItem("lastmile_token", res.data.data.token);
-        setToken(res.data.data.token);
-        const profile = await fetchCurrentUser();
+        const profile = (res.data.data?.user as User | undefined) ?? (await fetchCurrentUser());
         setUser(profile);
         return profile;
       },
@@ -68,14 +55,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await api.post("/auth/logout");
         } catch {
-          /* token is discarded locally either way */
+          /* cookie is cleared server-side; drop local user either way */
         }
         localStorage.removeItem("lastmile_token");
-        setToken(null);
         setUser(null);
       },
     }),
-    [user, token, loading],
+    [user, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

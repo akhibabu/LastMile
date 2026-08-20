@@ -2,13 +2,11 @@ import type { NextFunction, Request, Response } from "express";
 import type { Role } from "@prisma/client";
 import { prisma } from "../config/prisma.js";
 import { ForbiddenError, UnauthorizedError } from "../utils/errors.js";
+import { ACCESS_TOKEN_COOKIE } from "../utils/cookies.js";
 import { verifyToken } from "../utils/jwt.js";
 
 export function authenticate(req: Request, _res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  const bearer = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
-  const cookieToken = (req as Request & { cookies?: Record<string, string> }).cookies?.token;
-  const token = bearer ?? cookieToken;
+  const token = req.cookies?.[ACCESS_TOKEN_COOKIE];
 
   if (!token) {
     next(new UnauthorizedError());

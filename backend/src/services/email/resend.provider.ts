@@ -7,9 +7,11 @@ export class ResendEmailProvider implements EmailProvider {
   constructor(
     private readonly apiKey: string,
     private readonly fromEmail: string,
+    private readonly fromName: string,
   ) {}
 
   async send(message: EmailMessage): Promise<EmailSendResult> {
+    const from = this.fromName ? `${this.fromName} <${this.fromEmail}>` : this.fromEmail;
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -18,7 +20,7 @@ export class ResendEmailProvider implements EmailProvider {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: this.fromEmail,
+          from,
           to: [message.to],
           subject: message.subject,
           text: message.text,
@@ -28,7 +30,7 @@ export class ResendEmailProvider implements EmailProvider {
 
       const body = (await response.json()) as { id?: string; message?: string };
       if (!response.ok) {
-        logger.error({ body }, "Resend email failed");
+        logger.error({ message: body.message }, "Resend email failed");
         return {
           ok: false,
           provider: this.name,

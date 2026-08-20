@@ -1,14 +1,27 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
+import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { EmptyState } from "../components/Tooltip";
-import { PageHeader, Skeleton } from "../components/ui";
+import { Button, PageHeader, Skeleton } from "../components/ui";
+import { useAuth } from "../lib/auth";
 import type { NotificationItem } from "../types";
 
 export function NotificationsPage() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => (await api.get("/notifications")).data.data as NotificationItem[],
+  });
+
+  const retry = useMutation({
+    mutationFn: async (id: string) => api.post(`/notifications/${id}/retry`),
+    onSuccess: () => {
+      toast.success("Retry sent");
+      void qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   if (isLoading) {
@@ -42,6 +55,14 @@ export function NotificationsPage() {
               <p className="mt-2 text-xs text-muted">
                 {item.order?.orderNumber ?? ""} · {new Date(item.createdAt).toLocaleString()} · {item.recipient}
               </p>
+              {item.status === "FAILED" && item.errorMessage ? (
+                <p className="mt-1 text-xs text-[#b42318]">{item.errorMessage}</p>
+              ) : null}
+              {user?.role === "ADMIN" && item.status === "FAILED" ? (
+                <Button className="mt-3" variant="ghost" onClick={() => retry.mutate(item.id)} disabled={retry.isPending}>
+                  Retry email
+                </Button>
+              ) : null}
             </article>
           ))}
         </div>

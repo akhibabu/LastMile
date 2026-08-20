@@ -6,6 +6,7 @@ import {
   listAvailableAgents,
   updateAvailability,
   updateLocation,
+  updateMyLocation,
 } from "../controllers/agent.controller.js";
 import { authenticate, requireRoles } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -19,5 +20,6 @@ agentRouter.get("/", requireRoles("ADMIN"), listAgents);
 agentRouter.get("/available", requireRoles("ADMIN"), listAvailableAgents);
 agentRouter.get("/me", requireRoles("AGENT", "ADMIN"), getMeAgent);
 agentRouter.post("/", requireRoles("ADMIN"), validate(createAgentSchema), createAgent);
+agentRouter.patch("/me/location", requireRoles("AGENT"), validate(locationSchema), updateMyLocation);
 agentRouter.patch("/:id/location", requireRoles("AGENT", "ADMIN"), validate(locationSchema), updateLocation);
 agentRouter.patch("/:id/availability", requireRoles("AGENT", "ADMIN"), validate(availabilitySchema), updateAvailability);

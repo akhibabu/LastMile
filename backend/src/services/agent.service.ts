@@ -1,29 +1,46 @@
 import { prisma } from "../config/prisma.js";
+import { loadEnv } from "../config/env.js";
+import { decorateAgentLocation } from "../lib/location-status.js";
 import { ForbiddenError, NotFoundError } from "../utils/errors.js";
 
+function withLocation<T extends { currentLatitude?: number | null; currentLongitude?: number | null; locationUpdatedAt?: Date | null }>(
+  agent: T,
+) {
+  return decorateAgentLocation(agent, loadEnv().LOCATION_STALE_THRESHOLD);
+}
+
 export class AgentService {
-  list() {
-    return prisma.agentProfile.findMany({
+  async list() {
+    const agents = await prisma.agentProfile.findMany({
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
         currentZone: true,
         assignedOrders: {
           where: { status: { in: ["ASSIGNED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY", "RESCHEDULED"] } },
-          select: { id: true, orderNumber: true, status: true },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            pickupAddress: true,
+            pickupLatitude: true,
+            pickupLongitude: true,
+          },
         },
       },
       orderBy: { createdAt: "asc" },
     });
+    return agents.map((agent) => withLocation(agent));
   }
 
-  available() {
-    return prisma.agentProfile.findMany({
+  async available() {
+    const agents = await prisma.agentProfile.findMany({
       where: { isAvailable: true, status: "AVAILABLE" },
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
         currentZone: true,
       },
     });
+    return agents.map((agent) => withLocation(agent));
   }
 
   async getByUserId(userId: string) {
@@ -32,7 +49,7 @@ export class AgentService {
       include: { user: true, currentZone: true },
     });
     if (!agent) throw new NotFoundError("Agent profile not found");
-    return agent;
+    return withLocation(agent);
   }
 
   async updateLocation(
@@ -50,7 +67,7 @@ export class AgentService {
       data: { agentId, latitude: data.latitude, longitude: data.longitude },
     });
 
-    return prisma.agentProfile.update({
+    const updated = await prisma.agentProfile.update({
       where: { id: agentId },
       data: {
         currentLatitude: data.latitude,
@@ -60,6 +77,7 @@ export class AgentService {
       },
       include: { user: { select: { id: true, name: true, email: true } }, currentZone: true },
     });
+    return withLocation(updated);
   }
 
   async updateAvailability(
@@ -74,7 +92,7 @@ export class AgentService {
     }
 
     const status = data.status ?? (data.isAvailable ? "AVAILABLE" : "OFFLINE");
-    return prisma.agentProfile.update({
+    const updated = await prisma.agentProfile.update({
       where: { id: agentId },
       data: {
         isAvailable: status === "AVAILABLE" ? data.isAvailable : false,
@@ -82,6 +100,7 @@ export class AgentService {
       },
       include: { user: { select: { id: true, name: true, email: true } }, currentZone: true },
     });
+    return withLocation(updated);
   }
 }
 

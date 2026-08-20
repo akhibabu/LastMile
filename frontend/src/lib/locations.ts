@@ -93,5 +93,12 @@ async function fromZonesEndpoint(search: string): Promise<ServiceLocation[]> {
 export async function fetchLocations(search = ""): Promise<ServiceLocation[]> {
   const dedicated = await fromLocationsEndpoint(search);
   if (dedicated) return dedicated;
-  return fromZonesEndpoint(search);
+  try {
+    return await fromZonesEndpoint(search);
+  } catch {
+    if (dedicated === null) {
+      throw new Error("Unable to load delivery locations. Please try again.");
+    }
+    return [];
+  }
 }

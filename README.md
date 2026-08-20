@@ -1,6 +1,6 @@
 # LastMile — Last-Mile Delivery Management Platform
 
-A complete, demo-ready logistics platform with customer, delivery-agent, and admin roles. Orders are priced from configurable zone mappings and rate cards (not hardcoded), assigned to the nearest available agent, tracked with an immutable status history, and notified over email (or a DEV MODE logger).
+A complete, demo-ready logistics platform with customer, delivery-agent, and admin roles. Orders are priced from configurable zone mappings and rate cards (not hardcoded), assigned to the nearest available agent, tracked with an immutable status history, and notified over transactional email.
 
 ## 1. Project Overview
 
@@ -8,27 +8,28 @@ LastMile lets a customer (or admin) enter pickup/drop addresses, package dimensi
 
 ## 2. Features
 
-- JWT authentication and role-based access (CUSTOMER / AGENT / ADMIN)
+- JWT authentication in an HTTP-only cookie, with role-based access (CUSTOMER / AGENT / ADMIN)
 - Configurable zones with pincode and area mappings stored in PostgreSQL
-- Configurable rate cards for B2B/B2C × intra/inter-zone, including COD surcharge
+- Configurable exact-route and explicit fallback rate cards for B2B/B2C × intra/inter-zone, including COD surcharge
 - Price preview before confirmation (`POST /api/orders/preview-price`)
 - Volumetric weight = (L × B × H) / 5000; billable = max(actual, volumetric)
-- Manual assignment, auto-assignment (Haversine nearest agent, zone fallback)
+- Manual assignment, auto-assignment (fresh location + Haversine nearest agent, zone fallback)
+- Near-real-time agent location from the browser, with stale-location handling
 - Immutable `OrderStatusHistory` (append-only)
 - Failed delivery reasons, reschedule requests, delivery attempts
-- Email notifications via provider interface (Resend or DEV MODE)
+- Transactional email via Resend, with a development log fallback
 - Customer, agent, and admin dashboards with server-side metrics
 - Swagger UI at `/api/docs`
 
 ## 3. Architecture
 
 ```
-frontend (React + Vite)  -->  REST / JWT  -->  backend (Express)
+frontend (React + Vite)  -->  REST / HTTP-only cookie JWT  -->  backend (Express)
                                                  |
-                                                 +-- services (pricing, assignment, tracking, notifications, zones)
+                                                 +-- services (pricing, assignment, tracking, notifications, email, location)
                                                  +-- Prisma / PostgreSQL
                                                  +-- Nominatim geocoding (optional)
-                                                 +-- Email provider (Resend | DEV logger)
+                                                 +-- EmailService → ResendProvider | development logger
 ```
 
 Business logic lives in services, not route files. Pricing, assignment, and tracking each have a dedicated service plus a pure function module under `backend/src/lib` that is unit-tested without a database.
@@ -40,7 +41,7 @@ Business logic lives in services, not route files. Pricing, assignment, and trac
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, React Router, TanStack Query |
 | Backend | Node.js, Express 5, TypeScript, Zod, JWT, bcryptjs, Pino |
 | Database | PostgreSQL 16 + Prisma ORM |
-| Email | Resend (optional) or DEV MODE logger |
+| Email | Resend, with development log fallback |
 | Maps | OpenStreetMap Nominatim |
 | Deploy | Frontend → Vercel; Backend → Render/Railway; DB → Neon/Supabase |
 
@@ -70,16 +71,18 @@ See `.env.example`. Backend reads `backend/.env`. Frontend reads `frontend/.env`
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Signing secret (min 16 chars) |
 | `JWT_EXPIRES_IN` | Token lifetime, default `7d` |
-| `FRONTEND_URL` | CORS origin |
+| `FRONTEND_URL` | CORS origin allowlist (comma-separated) |
 | `BACKEND_URL` | Public API URL |
-| `EMAIL_PROVIDER` | `dev` \| `resend` |
-| `EMAIL_API_KEY` | Required only for Resend |
+| `RESEND_API_KEY` | Resend API key. When set, emails are sent. |
 | `FROM_EMAIL` | Sender address |
+| `FROM_NAME` | Sender display name |
+| `LOCATION_UPDATE_INTERVAL` | Agent location throttle in ms, default `30000` |
+| `LOCATION_STALE_THRESHOLD` | Fresh-location window in ms, default `300000` |
 | `GEOCODING_USER_AGENT` | Nominatim user agent |
-| `SEED_PASSWORD` | Password for seeded demo users |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Optional first admin |
 | `VITE_API_URL` | Frontend API base, e.g. `http://localhost:4000/api` |
 
-Missing email credentials do **not** crash the server. The DEV MODE adapter logs the message and stores `Notification.status = LOGGED`.
+If `RESEND_API_KEY` is absent in development, the email is logged and stored as `Notification.status = LOGGED` (never `SENT`). In production a missing key records `FAILED` and does not fail the order.
 
 ## 7. Local Setup
 
@@ -117,7 +120,7 @@ Hosted Postgres (Neon/Supabase): set `DATABASE_URL` to the pooled or direct URL 
 `backend/prisma/seed.ts` creates:
 
 - Hyderabad zones `HYD_WEST`, `HYD_CENTRAL`, `HYD_EAST`, `HYD_NORTH`, `HYD_SOUTH` with realistic pincode/area maps (for example `500084` Gachibowli and `500081` Hitech City / Madhapur both in `HYD_WEST`; `500018` is Santoshnagar in `HYD_SOUTH`, not Hitech City)
-- B2B and B2C intra-zone and inter-zone rate cards for every Hyderabad zone pair (divisor 5000, COD surcharges). There is no generic fallback card.
+- B2B and B2C exact zone-pair rate cards for every Hyderabad zone pair (divisor 5000, COD surcharges). Explicit fallback cards can be added by an admin; none are hardcoded.
 
 It does **not** create a customer account. Sign up from the UI with your own name, email, and password.
 
@@ -127,12 +130,12 @@ Agents are created by a logged-in admin from **Agents → Add agent**, not by th
 
 ## 10. Authentication
 
-- `POST /api/auth/register` — always creates role `CUSTOMER` from the submitted name/email/phone/password (bcrypt hash). Extra fields such as `role` are rejected.
-- `POST /api/auth/login` — looks up the email, compares bcrypt hashes, returns `{ token, user }`
-- `POST /api/auth/logout` — client discards the token
-- `GET /api/auth/me` — Bearer token; returns the stored profile (never `passwordHash`)
+- `POST /api/auth/register` — always creates role `CUSTOMER` from the submitted name/email/phone/password (bcrypt hash). Extra fields such as `role` are rejected. Sets an HTTP-only `access_token` cookie and returns `{ user }` only.
+- `POST /api/auth/login` — looks up the email, compares bcrypt hashes, sets the HTTP-only cookie, returns `{ user }` (no JWT in JSON)
+- `POST /api/auth/logout` — clears the cookie
+- `GET /api/auth/me` — cookie-authenticated; returns the stored profile (never `passwordHash`)
 - Admins create agents via `POST /api/agents` with the agent's real name, email, and password
-- Authorization is enforced on the API. The UI role is never trusted. Customers cannot set `customerId` on create — it is taken from the JWT.
+- Authorization is enforced on the API from the verified cookie. The UI role is never trusted. Customers cannot set `customerId` on create — it is taken from the JWT. CORS uses `credentials: true` and a configured origin list, never `*`.
 
 ## 11. API Documentation
 
@@ -156,12 +159,12 @@ Errors:
 2. `volumetricWeight = (length × breadth × height) / volumetricDivisor` (default **5000**, stored on the rate card).
 3. `billableWeight = max(actualWeight, volumetricWeight, minimumChargeableWeight)`.
 4. Scope is `INTRA_ZONE` if pickup zone == drop zone, else `INTER_ZONE`.
-5. Select an **active** rate card for that `orderType` + `rateScope` **and exact source/destination zone pair**. No global default.
+5. Select an **active** rate card: exact source/destination zone pair first, then an administrator-configured intra/inter-zone fallback. Never a hidden hardcoded rate.
 6. `shippingCharge = baseRate + (billableWeight × perKgRate)`.
 7. COD surcharge from the rate card if `paymentType == COD`, else 0.
 8. `totalCharge = shippingCharge + codSurcharge`.
 
-If no card matches, the API returns `422 MISSING_RATE_CARD` ("No rate card is configured for this route.") and **does not** create an order or invent a price.
+If neither an exact card nor an explicit fallback exists, the API returns `422 MISSING_RATE_CARD` ("Pricing isn't available for this route yet.") and **does not** create an order or invent a price. The quote includes `resolutionType`: `EXACT_ZONE_PAIR`, `INTRA_ZONE_FALLBACK`, or `INTER_ZONE_FALLBACK`.
 
 **Worked example** (seeded B2C intra-zone COD, 100×100×100 cm, 10 kg, Gachibowli `500084` → Hitech City `500081`, both `HYD_WEST`):
 
@@ -188,10 +191,12 @@ Unmapped pincodes fail with `ZONE_UNRESOLVED`. The service does **not** guess a 
 `AssignmentService.assignNearestAgent(orderId)`:
 
 1. Eligible = `AVAILABLE` + `isAvailable` + `activeOrderCount < maxActiveOrders`.
-2. If pickup and agent have coordinates → minimum Haversine distance (ties broken by agent id).
-3. Else same `currentZoneId` as pickup zone.
-4. Else any eligible agent (stable id sort).
-5. Order → `ASSIGNED`, agent → `BUSY`, history + notification written.
+2. Prefer agents with a **fresh** location (`locationUpdatedAt` within `LOCATION_STALE_THRESHOLD`).
+3. If pickup and a fresh agent have coordinates → minimum Haversine distance (ties broken by agent id).
+4. Else same `currentZoneId` as pickup zone.
+5. Else any eligible agent (stable id sort).
+6. Stale coordinates are not used for nearest-agent ranking.
+7. Order → `ASSIGNED`, agent → `BUSY`, history records the reason, distance, and whether the location was fresh.
 
 Admin can also pick an agent manually or unassign before pickup.
 
@@ -205,7 +210,7 @@ Admin can also pick an agent manually or unassign before pickup.
 
 ## 16. Notification System
 
-`NotificationService.sendStatusNotification(orderId, status)` maps statuses to events (`ORDER_CREATED`, `ORDER_ASSIGNED`, …). Providers implement `EmailProvider.send`. DEV MODE logs `[DEV MODE EMAIL]` and persists `LOGGED`. Resend is used when `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` is set. SMS is abstracted as a channel enum for later providers.
+`NotificationService` → `EmailService` → `ResendProvider`. Order events (`ORDER_CREATED`, `ORDER_ASSIGNED`, `PICKED_UP`, `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `DELIVERED`, `FAILED`, `RESCHEDULED`) send a templated customer email. Statuses: `PENDING`, `SENT` (Resend confirmed), `LOGGED` (development fallback), `FAILED` (provider or production misconfiguration). Admins can retry failed emails without creating a new order event.
 
 ## 17. Testing
 
@@ -215,8 +220,9 @@ npm test
 
 Coverage (Vitest, no live DB required):
 
-- Pricing: volumetric, billable, intra/inter, B2B/B2C, prepaid/COD, missing card, breakdown
-- Assignment: nearest agent, exclusions, same-zone fallback, none available
+- Pricing: volumetric, billable, intra/inter, B2B/B2C, prepaid/COD, exact vs fallback, missing card, breakdown
+- Assignment: nearest fresh agent, stale-location handling, exclusions, same-zone fallback, none available
+- Email templates and cookie expiry parsing
 - Tracking: valid/invalid transitions, admin override, append-only history API
 - Failed delivery: reason required, FAILED→RESCHEDULED→ASSIGNED, attempt retention
 
@@ -247,9 +253,13 @@ Admin (optional, only if you set seed env vars):
 
 Demo path: register as a customer → create B2C COD Gachibowli `500084` → Hitech City `500081` → preview ₹2,095.00 (200 kg billable) → confirm → login as admin → auto-assign (after creating an available agent) → agent walks statuses → mark failed → customer reschedules → delivered → inspect timeline.
 
-## 20. Known Limitations
+## 20. Implemented capabilities
 
-- Email in local/dev is logged, not sent, unless Resend keys are provided.
-- Agent location is last-known point-in-time, not a live GPS stream.
-- Rate cards are zone-pair specific. A route without a matching card is rejected rather than priced from a generic default.
-- JWT is stored in `localStorage` for a simple SPA demo (use httpOnly cookies for higher-sensitivity production).
+**Email.** Resend sends transactional mail when `RESEND_API_KEY` is set. Development without a key logs the payload and stores `LOGGED`. Production without a key stores `FAILED` and does not pretend the email was sent.
+
+**Agent location.** The agent dashboard uses `navigator.geolocation.watchPosition()`, throttled by `LOCATION_UPDATE_INTERVAL`, and writes `PATCH /api/agents/me/location`. Admin dashboards poll for near-real-time positions, mark stale locations, and use fresh coordinates for auto-assignment.
+
+**Rate cards.** Exact zone-pair cards win. An admin-configured intra-zone or inter-zone fallback is used next. If neither exists, pricing is rejected.
+
+**Authentication.** JWT is stored in an HTTP-only `access_token` cookie. The frontend keeps only safe user fields from `GET /api/auth/me` and never stores the token in `localStorage` or `sessionStorage`.
+

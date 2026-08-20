@@ -171,6 +171,7 @@ async function seedRateCards(zones: Array<{ id: string; code: string }>) {
           minimumChargeableWeight: 0.5,
           volumetricDivisor: 5000,
           codSurcharge: rates.codSurcharge,
+          isFallback: false,
           active: true,
         });
       }

@@ -11,7 +11,7 @@ export const logger = pino({
       }
     : undefined,
   redact: {
-    paths: ["password", "passwordHash", "token", "authorization", "EMAIL_API_KEY", "JWT_SECRET"],
+    paths: ["password", "passwordHash", "token", "authorization", "EMAIL_API_KEY", "RESEND_API_KEY", "JWT_SECRET"],
     censor: "[REDACTED]",
   },
 });

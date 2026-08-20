@@ -1,6 +1,7 @@
 import { prisma } from "../config/prisma.js";
 import { logger } from "../config/logger.js";
 import { AppError, NotFoundError } from "../utils/errors.js";
+import { loadEnv } from "../config/env.js";
 import { selectNearestAgent, type AssignableAgent, type AssignmentResult } from "../lib/assignment.js";
 import { trackingService } from "./tracking.service.js";
 
@@ -27,6 +28,7 @@ export class AssignmentService {
       currentLatitude: agent.currentLatitude,
       currentLongitude: agent.currentLongitude,
       currentZoneId: agent.currentZoneId,
+      locationUpdatedAt: agent.locationUpdatedAt,
       activeOrderCount: agent.assignedOrders.length,
       maxActiveOrders: agent.maxActiveOrders,
     }));
@@ -40,11 +42,16 @@ export class AssignmentService {
     }
 
     const agents = await this.listEligibleAgents();
-    const result = selectNearestAgent(agents, {
-      latitude: order.pickupLatitude,
-      longitude: order.pickupLongitude,
-      zoneId: order.pickupZoneId,
-    });
+    const env = loadEnv();
+    const result = selectNearestAgent(
+      agents,
+      {
+        latitude: order.pickupLatitude,
+        longitude: order.pickupLongitude,
+        zoneId: order.pickupZoneId,
+      },
+      { staleThresholdMs: env.LOCATION_STALE_THRESHOLD },
+    );
 
     if (!result) {
       throw new AppError("No available agent found for auto-assignment", 422, "NO_AVAILABLE_AGENT");
@@ -75,6 +82,7 @@ export class AssignmentService {
       agent,
       distanceKm: null,
       reason: "ANY_AVAILABLE_FALLBACK",
+      locationFresh: false,
     };
     await this.applyAssignment(orderId, result, actorId, false);
     return result;
@@ -139,12 +147,13 @@ export class AssignmentService {
       status: "ASSIGNED",
       actorId,
       note: auto
-        ? `Auto-assigned to ${result.agent.name} (${result.reason}${result.distanceKm != null ? `, ${result.distanceKm} km` : ""})`
+        ? `Auto-assigned to ${result.agent.name} (${result.reason}${result.distanceKm != null ? `, ${result.distanceKm} km` : ""}${result.locationFresh ? ", fresh location" : ""})`
         : `Manually assigned to ${result.agent.name}`,
       metadata: {
         agentId: result.agent.id,
         reason: result.reason,
         distanceKm: result.distanceKm,
+        locationFresh: result.locationFresh,
         auto,
       },
     });

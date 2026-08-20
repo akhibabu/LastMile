@@ -4,7 +4,7 @@ export const openApiSpec = {
     title: "LastMile Delivery API",
     version: "1.0.0",
     description:
-      "REST API for the Last-Mile Delivery Management Platform. Authenticate with POST /api/auth/login and send `Authorization: Bearer <token>`.",
+      "REST API for the Last-Mile Delivery Management Platform. Authenticate with POST /api/auth/login. The API sets an HTTP-only `access_token` cookie; subsequent requests must include credentials.",
   },
   servers: [{ url: "/api", description: "API root" }],
   tags: [
@@ -18,7 +18,11 @@ export const openApiSpec = {
   ],
   components: {
     securitySchemes: {
-      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      cookieAuth: {
+        type: "apiKey",
+        in: "cookie",
+        name: "access_token",
+      },
     },
     schemas: {
       ApiSuccess: {
@@ -111,7 +115,7 @@ export const openApiSpec = {
     "/auth/me": {
       get: {
         tags: ["Auth"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Current user",
         responses: { "200": { description: "User" }, "401": { description: "Unauthorized" } },
       },
@@ -119,7 +123,7 @@ export const openApiSpec = {
     "/orders/preview-price": {
       post: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Calculate zones, weights, and charges without creating an order",
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/OrderPreviewRequest" } } } },
         responses: {
@@ -131,7 +135,7 @@ export const openApiSpec = {
     "/orders": {
       get: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "List orders for the current role",
         parameters: [
           { name: "status", in: "query", schema: { type: "string" } },
@@ -144,7 +148,7 @@ export const openApiSpec = {
       },
       post: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Create order after confirming the price (CUSTOMER or ADMIN)",
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/OrderPreviewRequest" } } } },
         responses: { "201": { description: "Order created with status CREATED" } },
@@ -153,7 +157,7 @@ export const openApiSpec = {
     "/orders/{id}": {
       get: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Get order details",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Order" }, "404": { description: "Not found" } },
@@ -162,7 +166,7 @@ export const openApiSpec = {
     "/orders/{id}/tracking": {
       get: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Immutable tracking timeline",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Timeline" } },
@@ -171,7 +175,7 @@ export const openApiSpec = {
     "/orders/{id}/assign": {
       post: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Manually assign an agent (ADMIN)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         requestBody: {
@@ -184,7 +188,7 @@ export const openApiSpec = {
     "/orders/{id}/auto-assign": {
       post: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Assign nearest available agent (ADMIN)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Assigned with distance and reason" } },
@@ -193,7 +197,7 @@ export const openApiSpec = {
     "/orders/{id}/status": {
       post: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Advance or override order status",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         requestBody: {
@@ -217,7 +221,7 @@ export const openApiSpec = {
     "/orders/{id}/reschedule": {
       post: {
         tags: ["Orders"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Reschedule a failed delivery",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         requestBody: {
@@ -239,13 +243,13 @@ export const openApiSpec = {
     "/agents": {
       get: {
         tags: ["Agents"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "List agents (ADMIN)",
         responses: { "200": { description: "Agents" } },
       },
       post: {
         tags: ["Agents"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Create an agent account (ADMIN)",
         responses: { "201": { description: "Created" } },
       },
@@ -253,7 +257,7 @@ export const openApiSpec = {
     "/agents/available": {
       get: {
         tags: ["Agents"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "List available agents (ADMIN)",
         responses: { "200": { description: "Available agents" } },
       },
@@ -261,7 +265,7 @@ export const openApiSpec = {
     "/agents/{id}/location": {
       patch: {
         tags: ["Agents"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Update agent lat/lng (self or ADMIN). Use id=me for the current agent.",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         requestBody: {
@@ -281,7 +285,7 @@ export const openApiSpec = {
     "/agents/{id}/availability": {
       patch: {
         tags: ["Agents"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Update availability",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Updated" } },
@@ -290,7 +294,7 @@ export const openApiSpec = {
     "/locations": {
       get: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "List supported pickup and drop localities",
         parameters: [{ name: "q", in: "query", schema: { type: "string", example: "gachi" } }],
         responses: { "200": { description: "Locations from ZoneArea rows" } },
@@ -299,7 +303,7 @@ export const openApiSpec = {
     "/locations/search": {
       get: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Search supported localities by area, city, or pincode",
         parameters: [{ name: "q", in: "query", required: true, schema: { type: "string", example: "gachi" } }],
         responses: { "200": { description: "Matching locations" } },
@@ -308,13 +312,13 @@ export const openApiSpec = {
     "/zones": {
       get: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "List zones and pincode mappings",
         responses: { "200": { description: "Zones" } },
       },
       post: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Create zone (ADMIN)",
         responses: { "201": { description: "Created" } },
       },
@@ -322,7 +326,7 @@ export const openApiSpec = {
     "/zones/lookup": {
       get: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Resolve a pincode to its mapped zone",
         parameters: [{ name: "pincode", in: "query", required: true, schema: { type: "string", example: "500084" } }],
         responses: {
@@ -334,14 +338,14 @@ export const openApiSpec = {
     "/zones/{id}": {
       put: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Update zone (ADMIN)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Updated" } },
       },
       delete: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Deactivate zone (ADMIN)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Deactivated" } },
@@ -350,7 +354,7 @@ export const openApiSpec = {
     "/zones/{id}/areas": {
       post: {
         tags: ["Zones"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Map a pincode or area to a zone (ADMIN)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "201": { description: "Mapped" } },
@@ -359,13 +363,13 @@ export const openApiSpec = {
     "/rate-cards": {
       get: {
         tags: ["Rate Cards"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "List rate cards",
         responses: { "200": { description: "Rate cards" } },
       },
       post: {
         tags: ["Rate Cards"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Create rate card (ADMIN)",
         responses: { "201": { description: "Created" } },
       },
@@ -373,14 +377,14 @@ export const openApiSpec = {
     "/rate-cards/{id}": {
       put: {
         tags: ["Rate Cards"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Update rate card (ADMIN)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Updated" } },
       },
       delete: {
         tags: ["Rate Cards"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Delete rate card (ADMIN)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Deleted" } },
@@ -389,7 +393,7 @@ export const openApiSpec = {
     "/notifications": {
       get: {
         tags: ["Notifications"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "List notifications for the current user (admins see all)",
         responses: { "200": { description: "Notifications" } },
       },
@@ -397,7 +401,7 @@ export const openApiSpec = {
     "/admin/dashboard": {
       get: {
         tags: ["Admin"],
-        security: [{ bearerAuth: [] }],
+        security: [{ cookieAuth: [] }],
         summary: "Aggregated dashboard metrics for the current role",
         responses: { "200": { description: "Metrics" } },
       },

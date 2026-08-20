@@ -1,7 +1,7 @@
 # API reference
 
 Base URL (local): `http://localhost:4000/api`  
-Auth: `Authorization: Bearer <jwt>` unless noted.  
+Auth: HTTP-only `access_token` cookie set by login/register. Send requests with credentials. No JWT is returned in JSON.  
 Interactive: `http://localhost:4000/api/docs`
 
 Envelope:
@@ -24,24 +24,24 @@ Error:
 - Role: creates CUSTOMER
 - Body: `{ name, email, phone, password, address?, city?, pincode? }`
 - Role is always `CUSTOMER`; a `role` field in the body is rejected
-- 201: `{ user, token }` (user has no `passwordHash`)
+- 201: `{ user }` (user has no `passwordHash`). Sets HTTP-only `access_token` cookie.
 - 409: email already registered
 
 ### POST `/auth/logout`
 
 - Auth: none required
-- 200: `{ loggedOut: true }` — discard the JWT on the client
+- 200: `{ loggedOut: true }` — clears the HTTP-only `access_token` cookie
 
 ### POST `/auth/login`
 
 - Auth: none
 - Body: `{ email, password }`
-- 200: `{ user, token }`
+- 200: `{ user }` plus HTTP-only `access_token` cookie. JWT is not included in JSON.
 - 401: invalid credentials
 
 ### GET `/auth/me`
 
-- Auth: Bearer
+- Auth: cookie
 - 200: current user including profiles
 - 401: missing/invalid token
 
@@ -111,7 +111,8 @@ Error:
 ### GET `/agents/available` — ADMIN
 ### GET `/agents/me` — AGENT
 ### POST `/agents` — ADMIN `{ name, email, password, phone?, currentZoneId?, currentLatitude?, currentLongitude? }`
-### PATCH `/agents/:id/location` — self or ADMIN `{ latitude, longitude, zoneId? }` (`id` may be `me`)
+### PATCH `/agents/me/location` — AGENT `{ latitude, longitude }` (agent is taken from the session)
+### PATCH `/agents/:id/location` — ADMIN `{ latitude, longitude, zoneId? }`
 ### PATCH `/agents/:id/availability` — `{ isAvailable, status? }`
 
 ## Zones
@@ -136,14 +137,24 @@ Each location: `{ id, area, city, state, pincode, zoneId, zoneName, zoneCode, is
 ### PUT `/rate-cards/:id` — ADMIN
 ### DELETE `/rate-cards/:id` — ADMIN
 
-Body fields: `name`, `orderType`, `rateScope`, `sourceZoneId?`, `destinationZoneId?`, `baseRate`, `perKgRate`, `minimumChargeableWeight?`, `volumetricDivisor?`, `codSurcharge?`, `active?`
+Body fields: `name`, `orderType`, `rateScope`, `isFallback?`, `sourceZoneId?`, `destinationZoneId?`, `baseRate`, `perKgRate`, `minimumChargeableWeight?`, `volumetricDivisor?`, `codSurcharge?`, `active?`
+
+Exact cards require both zones. Fallback cards set `isFallback: true` and omit zones.
 
 ## Notifications
 
 ### GET `/notifications`
 
 - Customer/agent: own inbox
-- Admin: all logged/sent messages
+- Admin: all logged/sent/failed messages
+
+### POST `/notifications/:id/retry` — ADMIN
+
+Retries a `FAILED` email on the same notification row.
+
+### GET `/config`
+
+Public runtime config: `locationUpdateIntervalMs`, `locationStaleThresholdMs`, `appName`.
 
 ## Admin
 

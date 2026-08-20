@@ -6,7 +6,9 @@ import { Package } from "lucide-react";
 import { Button } from "../components/ui";
 import { StatusBadge } from "../components/StatusBadge";
 import { EmptyState } from "../components/Tooltip";
+import { LocationSharing } from "../components/LocationSharing";
 import { useAuth } from "../lib/auth";
+import { formatAge } from "../lib/utils";
 import type { Order } from "../types";
 
 export function AgentDashboard() {
@@ -58,15 +60,21 @@ export function AgentDashboard() {
           </div>
         ))}
       </div>
+      <LocationSharing />
       <div className="stat-card">
-        <p className="text-sm text-[#5c6b78]">Last known location</p>
+        <p className="text-sm text-[#5c6b78]">Near-real-time location</p>
         <p className="mt-1 font-medium">
-          {agent?.currentLatitude && agent?.currentLongitude
-            ? `${agent.currentLatitude.toFixed(5)}, ${agent.currentLongitude.toFixed(5)}`
-            : "Not set"}
+          {agent?.locationStatus === "STALE"
+            ? "Location unavailable / stale"
+            : agent?.currentLatitude && agent?.currentLongitude
+              ? `${agent.currentLatitude.toFixed(5)}, ${agent.currentLongitude.toFixed(5)}`
+              : "Not set"}
         </p>
-        <p className="text-xs text-[#8a7b66]">Updated {agent?.locationUpdatedAt ? new Date(agent.locationUpdatedAt).toLocaleString() : "never"}</p>
-        <Link to="/agent/location" className="mt-3 inline-block text-sm font-semibold text-[#0f9d8e]">Update location</Link>
+        <p className="text-xs text-[#8a7b66]">
+          Last updated {agent?.locationUpdatedAt ? formatAge(agent.locationUpdatedAt) : "never"}
+          {agent?.currentZone?.name ? ` · ${agent.currentZone.name}` : ""}
+        </p>
+        <Link to="/agent/location" className="mt-3 inline-block text-sm font-semibold text-[#0f9d8e]">Manual override</Link>
       </div>
       <section>
         <h2 className="mb-3 text-lg font-semibold">Current assignments</h2>

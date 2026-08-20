@@ -15,9 +15,15 @@ services:
         value: 7d
       - key: FRONTEND_URL
         sync: false
-      - key: EMAIL_PROVIDER
-        value: dev
       - key: FROM_EMAIL
         value: noreply@lastmile.local
+      - key: FROM_NAME
+        value: LastMile
+      - key: RESEND_API_KEY
+        sync: false
+      - key: LOCATION_UPDATE_INTERVAL
+        value: "30000"
+      - key: LOCATION_STALE_THRESHOLD
+        value: "300000"
       - key: NODE_ENV
         value: production

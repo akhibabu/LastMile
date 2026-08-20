@@ -67,14 +67,15 @@ export class PricingService {
       volumetricDivisor: card.volumetricDivisor,
       codSurcharge: Number(card.codSurcharge),
       active: card.active,
+      isFallback: card.isFallback,
     }));
 
     const zoneScope = pickup.id === drop.id ? "INTRA_ZONE" : "INTER_ZONE";
-    const rateCard = selectRateCard(mapped, input.orderType, zoneScope, pickup.id, drop.id);
+    const selected = selectRateCard(mapped, input.orderType, zoneScope, pickup.id, drop.id);
 
-    if (!rateCard) {
+    if (!selected) {
       throw new AppError(
-        `No rate card is configured for this route (${input.orderType} ${zoneScope === "INTRA_ZONE" ? "intra-zone" : "inter-zone"}: ${pickup.code} → ${drop.code}).`,
+        "Pricing isn't available for this route yet.",
         422,
         "MISSING_RATE_CARD",
       );
@@ -95,7 +96,8 @@ export class PricingService {
         orderType: input.orderType,
         paymentType: input.paymentType,
       },
-      rateCard,
+      selected.card,
+      selected.resolutionType,
     );
 
     logger.info(
