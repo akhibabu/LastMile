@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # LastMile — Last-Mile Delivery Management Platform
 
 A complete, demo-ready logistics platform with customer, delivery-agent, and admin roles. Orders are priced from configurable zone mappings and rate cards (not hardcoded), assigned to the nearest available agent, tracked with an immutable status history, and notified over email (or a DEV MODE logger).
@@ -257,3 +258,6 @@ Demo path: register as a customer → create B2C COD Gachibowli `500084` → Hit
 ## License
 
 MIT — built as a project submission / evaluation deliverable.
+=======
+# LastMile
+>>>>>>> 816841c2dae7b9793820b60a4e6a8f2fe78e2b4d
