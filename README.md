@@ -1374,3 +1374,14 @@ Do not paste production or personal passwords into this file. Use whatever you c
 - [`docs/API.md`](docs/API.md) — compact endpoint list
 - [`docs/SCHEMA.md`](docs/SCHEMA.md) — schema companion
 - [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma)
+
+---
+
+## Source zip
+
+Download the project source (no `node_modules`, no `.git`, no local `.env` files):
+
+- In this repo: [LastMile.zip](LastMile.zip)
+- From GitHub: [https://github.com/akhibabu/LastMile/archive/refs/heads/main.zip](https://github.com/akhibabu/LastMile/archive/refs/heads/main.zip)
+
+Unzip, then follow [Local setup](#7-local-setup): copy the `.env.example` files, start Postgres, migrate, seed, and run `npm install` / `npm run dev`.
