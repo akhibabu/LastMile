@@ -1180,6 +1180,17 @@ Templates: `backend/src/services/email/templates.ts`. Channel stored: `EMAIL`. R
 
 Admin retry: `POST /api/notifications/:id/retry`.
 
+### Resend setup
+
+1. Create an account at [resend.com](https://resend.com).
+2. Generate an API key in the Resend dashboard.
+3. Put it only in **`backend/.env`** as `RESEND_API_KEY=` (never in the frontend, README, or git).
+4. Set `FROM_EMAIL` to a sender Resend accepts (a domain you verified in Resend, or Resend’s documented test sender). Set `FROM_NAME` if you want a display name.
+5. Restart the backend. Startup should log `Resend email provider configured.`
+6. Trigger a real notification (create an order or change status), or as admin call `POST /api/admin/notifications/test-email` with `{ "email": "you@example.com" }`.
+
+Without `RESEND_API_KEY`, local development logs the message and stores `LOGGED`. `SENT` is recorded only after Resend accepts the send.
+
 ---
 
 ## 19. Failed delivery

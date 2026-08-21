@@ -3,8 +3,10 @@ import { prisma } from "../config/prisma.js";
 import { logger } from "../config/logger.js";
 import { AppError, NotFoundError } from "../utils/errors.js";
 import { createEmailService } from "./email/index.js";
+import { ResendEmailProvider } from "./email/resend.provider.js";
+import { TEST_EMAIL_HTML, TEST_EMAIL_SUBJECT, TEST_EMAIL_TEXT } from "./email/test-email.js";
 import { renderOrderEmail } from "./email/templates.js";
-import { loadEnv } from "../config/env.js";
+import { loadEnv, resendApiKey } from "../config/env.js";
 
 const STATUS_EVENT_MAP: Partial<Record<OrderStatus, NotificationEventType>> = {
   CREATED: "ORDER_CREATED",
@@ -138,6 +140,38 @@ export class NotificationService {
       body: record.body,
       notificationId: record.id,
     });
+  }
+
+  async sendTestEmail(recipient: string) {
+    const env = loadEnv();
+    const apiKey = resendApiKey(env);
+    if (!apiKey) {
+      throw new AppError("RESEND_API_KEY is not configured", 422, "EMAIL_NOT_CONFIGURED");
+    }
+    if (!env.FROM_EMAIL.trim()) {
+      throw new AppError("FROM_EMAIL is not configured", 422, "EMAIL_NOT_CONFIGURED");
+    }
+
+    const provider = new ResendEmailProvider(apiKey, env.FROM_EMAIL, env.FROM_NAME);
+    const result = await provider.send({
+      to: recipient,
+      subject: TEST_EMAIL_SUBJECT,
+      text: TEST_EMAIL_TEXT,
+      html: TEST_EMAIL_HTML,
+    });
+
+    if (!result.ok) {
+      logger.error({ error: result.error, recipient }, "test email failed");
+    } else {
+      logger.info({ recipient, provider: result.provider }, "test email accepted by Resend");
+    }
+
+    return {
+      sent: result.ok,
+      provider: result.provider,
+      messageId: result.messageId ?? null,
+      error: result.error ?? null,
+    };
   }
 
   async listForUser(userId: string, role: string) {

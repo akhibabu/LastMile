@@ -37,5 +37,5 @@ export function loadEnv(): Env {
 export const isProduction = () => loadEnv().NODE_ENV === "production";
 
 export function resendApiKey(env: Env = loadEnv()): string {
-  return env.RESEND_API_KEY || env.EMAIL_API_KEY || "";
+  return (env.RESEND_API_KEY || env.EMAIL_API_KEY || "").trim();
 }

@@ -13,6 +13,11 @@ export const retryNotification = asyncHandler(async (req: Request, res: Response
   return success(res, await notificationService.retry(param(req, "id")), "Notification retry queued");
 });
 
+export const sendTestEmail = asyncHandler(async (req: Request, res: Response) => {
+  const result = await notificationService.sendTestEmail(req.body.email);
+  return success(res, result, result.sent ? "Test email sent" : "Test email failed");
+});
+
 export const listCustomers = asyncHandler(async (_req: Request, res: Response) => {
   const customers = await prisma.user.findMany({
     where: { role: "CUSTOMER" },

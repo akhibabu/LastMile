@@ -152,6 +152,10 @@ Exact cards require both zones. Fallback cards set `isFallback: true` and omit z
 
 Retries a `FAILED` email on the same notification row.
 
+### POST `/admin/notifications/test-email` — ADMIN
+
+Body: `{ "email": "you@example.com" }`. Sends the Resend test message. Fails with `EMAIL_NOT_CONFIGURED` if `RESEND_API_KEY` or `FROM_EMAIL` is missing. Never returns the API key.
+
 ### GET `/config`
 
 Public runtime config: `locationUpdateIntervalMs`, `locationStaleThresholdMs`, `appName`.
