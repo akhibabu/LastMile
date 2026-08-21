@@ -1,53 +1,66 @@
-# System Design — LastMile Delivery Platform
+# System Design — Last-Mile Delivery Tracker
 
-This note describes how the running system actually prices, assigns, tracks, and stores last-mile orders. The implementation is a React SPA talking to an Express REST API with Prisma on PostgreSQL. Authorization is a server-signed JWT stored in an HTTP-only cookie; the browser role is never trusted.
+LastMile is a last-mile delivery platform. Customers or admins create orders; the API prices them from zone mappings and rate cards, assigns agents, records an immutable status timeline, emails customers, and supports failed-delivery rescheduling. Charges, zones, and assignments are computed on the server.
 
-## Rate calculation engine
+## Architecture
 
-Pricing is a dedicated service (`PricingService`) wrapping pure functions in `src/lib/pricing.ts`. Nothing in the UI or route layer computes money.
+```mermaid
+flowchart LR
+  A[React] --> B[Express] --> C[Services] --> D[Prisma] --> E[PostgreSQL]
+```
 
-An order quote always starts from live zone resolution and live rate cards. Volumetric weight is `(length × breadth × height) / divisor`. The divisor defaults to 5000 and is stored on the rate card so it is configurable without a code change. Billable weight is the max of actual weight, volumetric weight, and the card’s minimum chargeable weight.
+Express `/api` controllers call services: auth (JWT), zone resolution, pricing, assignment, tracking, notifications. Prisma writes PostgreSQL. The UI does not compute money or zones.
 
-Scope is intra-zone when pickup and drop resolve to the same zone, otherwise inter-zone. Card selection is configuration-driven:
+## Rate calculation
 
-1. Exact active zone-pair card for that order type and scope (`EXACT_ZONE_PAIR`)
-2. Explicit admin-configured fallback card for that order type and scope (`INTRA_ZONE_FALLBACK` or `INTER_ZONE_FALLBACK`)
-3. Otherwise `MISSING_RATE_CARD` — no hidden default, no invented price
+The customer (or admin for a chosen customer) enters pickup/drop, dimensions, weight, B2B/B2C, and prepaid/COD. Preview (`POST /api/orders/preview-price`) and create share `PricingService.quote`. Create recalculates; a client cannot submit a total.
 
-Shipping charge is `baseRate + billableWeight × perKgRate`. COD surcharge is taken from the same card only when payment type is COD. Quotes include `rateCardName` and `resolutionType`.
+1. Resolve pickup zone from the 6-digit pincode.
+2. Resolve drop zone the same way.
+3. Volumetric weight = **L × B × H / 5000** (cm; divisor lives on the rate card, default 5000).
+4. Billable weight = **max(actual weight, volumetric weight)** and the card’s `minimumChargeableWeight`.
+5. Scope is `INTRA_ZONE` if both zone ids match, else `INTER_ZONE`. Cards are filtered by `orderType` (`B2B` / `B2C`) and that scope.
+6. Selection: (1) exact active source→destination pair (`EXACT_ZONE_PAIR`); (2) admin `isFallback` card with no zone ids (`INTRA_ZONE_FALLBACK` / `INTER_ZONE_FALLBACK`); (3) otherwise `MISSING_RATE_CARD` — no hidden default.
+7. Shipping = `baseRate + billableWeight × perKgRate`.
+8. COD surcharge is taken from the same card only when `paymentType` is `COD`; prepaid adds 0.
+9. Total = shipping + COD. The quote includes `rateCardName` and `resolutionType`.
 
-Preview (`POST /api/orders/preview-price`) and create share this path. Create recalculates on the server and refuses the order with `MISSING_RATE_CARD` if no card applies. Clients cannot submit a homemade total.
+Zones and cards are PostgreSQL rows, edited in Admin. Seeded Hyderabad pairs are data, not frontend constants.
 
 ## Zone detection
 
-Zones and pincode/area rows are admin-managed tables, not frontend constants. `ZoneResolutionService` treats the 6-digit pincode as authoritative, looks up `ZoneArea`, and returns the mapped zone. If the address names a locality that belongs to a different zone, it returns `ADDRESS_PINCODE_MISMATCH`. Unmapped pincodes return `ZONE_UNRESOLVED`. The service does not geocode to the nearest unrelated city.
+The create-order UI loads `ZoneArea` localities (`GET /api/locations`). The API then receives address and pincode.
 
-## Near-real-time agent location
-
-Agents enable location sharing in the dashboard. The browser uses `navigator.geolocation.watchPosition()` and throttles writes to `PATCH /api/agents/me/location`. The backend identifies the agent from the authenticated cookie — the client cannot send an arbitrary `agentId`. Each write updates `currentLatitude`, `currentLongitude`, and `locationUpdatedAt`, and appends `AgentLocation` history.
-
-Admin views poll the agents API. Locations older than `LOCATION_STALE_THRESHOLD` are marked stale/unavailable and are not used for nearest-agent ranking. This is near-real-time browser geolocation, not a continuous GPS stream.
+`ZoneResolutionService` treats the **pincode as authoritative**: six digits → `ZoneArea` on an **active** `Zone`. Unmapped or multi-zone pincodes return `ZONE_UNRESOLVED`. Address text naming a locality in another zone returns `ADDRESS_PINCODE_MISMATCH`. Inactive zones (seeded `HYD_EXPANDING`) are excluded from resolution; the catalog may still list them as not bookable. Coordinates come from the request, area row, or zone centroid. Nominatim is present in the repo but is **not** used for zone detection.
 
 ## Auto-assignment
 
-`AssignmentService.assignNearestAgent` loads agents with current location, availability, freshness, and in-flight order counts. An agent is eligible only if status is AVAILABLE, `isAvailable` is true, and active orders are below `maxActiveOrders`. Priority: available → active → fresh location → nearest pickup by Haversine → same-zone fallback → any eligible agent. The write path sets the order to ASSIGNED, marks the agent BUSY, and appends history with reason, distance, and whether the location was fresh. Manual assign uses the same eligibility rules. Unassign is allowed only before pickup.
+Admin `POST /api/orders/:id/auto-assign` calls `AssignmentService.assignNearestAgent`.
 
-## Failed delivery handling
+Eligible agents: `AVAILABLE`, `isAvailable`, and in-flight count below `maxActiveOrders`. Agents with **fresh** coordinates (`locationUpdatedAt` within `LOCATION_STALE_THRESHOLD`, default five minutes) are ranked by Haversine distance to pickup; the nearest wins (`NEAREST_GEOGRAPHIC`). Stale coordinates are not used for that ranking. Otherwise: same `currentZoneId` as pickup (`SAME_ZONE_FALLBACK`), else any eligible agent (`ANY_AVAILABLE_FALLBACK`). The order becomes `ASSIGNED` and the agent `BUSY`. History stores reason, distance, and freshness. Manual assign uses the same eligibility rules.
 
-The status machine is explicit. Agents may mark FAILED only from OUT_FOR_DELIVERY and must supply a reason. That write creates a `DeliveryAttempt` (FAILED) and an append-only history row, then notifies the customer. Reschedule is allowed only from FAILED: a `RescheduleRequest` is stored, another attempt row (RESCHEDULED) is stored, the order moves to RESCHEDULED with a new date, and auto-assignment is attempted again. Previous attempts are never updated. A later SUCCESS attempt is a new row, which is how the original failure stays visible on the timeline.
+## Status and immutable history
 
-## Email notifications
+Happy path: `CREATED → ASSIGNED → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`. Failure: `OUT_FOR_DELIVERY → FAILED → RESCHEDULED → ASSIGNED`. Agents cannot skip steps. Admins may `override`. `CANCELLED` is a side exit from several states.
 
-`NotificationService` calls `EmailService`, which calls `ResendProvider` when `RESEND_API_KEY` is present. Templates live in `services/email/templates.ts`. Development without a key logs the payload and stores `LOGGED`. Production without a key stores `FAILED` and does not fail the order. `SENT` is used only after Resend accepts the request. Admins can retry a failed row without creating a new order event.
+Every transition inserts `OrderStatusHistory` (`status`, `timestamp`, `actorId`, optional note/metadata). `TrackingService` only creates and reads rows. Prior entries are not updated or deleted, so a later success cannot erase a failure.
 
-## Authentication
+## Failed delivery
 
-Login and register sign a JWT and set `access_token` as an HTTP-only cookie (`secure` and `SameSite=None` in production, `SameSite=Lax` locally). The JSON body returns the public user only. Middleware reads `req.cookies.access_token` and verifies the JWT server-side. Logout clears the cookie. The SPA uses `GET /api/auth/me` with `credentials: include` and does not store the JWT in `localStorage` or `sessionStorage`. CORS is origin-restricted with `credentials: true`.
+From `OUT_FOR_DELIVERY`, the agent marks `FAILED` and must supply a reason. The customer is emailed. They (or an admin) pick a new datetime. The platform records a reschedule request and a new delivery attempt, moves the order to `RESCHEDULED`, and tries auto-assignment again. The original failed attempt stays on the timeline; a later `DELIVERED` adds a separate `SUCCESS` attempt.
 
-## Database architecture
+## Database
 
-The schema is normalized around `User` (role), `CustomerProfile`, `AgentProfile`, `Zone` + `ZoneArea`, `RateCard` (including `isFallback`), `Order`, `OrderStatusHistory`, `DeliveryAttempt`, `RescheduleRequest`, `AgentLocation`, and `Notification` (`sentAt`, statuses `PENDING` / `SENT` / `FAILED` / `LOGGED`). Foreign keys and indexes cover customer, agent, status, zones, and time. History has no update/delete API; application code only `create`s rows. Money and weights are decimals. Prisma keeps queries parameterized.
+PostgreSQL via Prisma. `User` (`CUSTOMER` / `AGENT` / `ADMIN`) has optional `CustomerProfile` or `AgentProfile`. `Order` belongs to a customer user, optional assigned agent, pickup/drop `Zone`, and snapshotted charges. `Zone` has `ZoneArea` pincodes; `RateCard` references source/destination zones or is a fallback. `OrderStatusHistory`, `DeliveryAttempt`, `RescheduleRequest`, `AgentLocation`, and `Notification` hang off the order or agent. Foreign keys and decimal money/weight columns keep the model structured.
 
-## API architecture
+## API and security
 
-REST under `/api`, JSON envelope `{ success, data, message }`. Zod validates bodies. Controllers stay thin; services own pricing, assignment, tracking, notifications, email, location, and zone resolution. Swagger is served at `/api/docs`. Dashboard metrics are SQL aggregations (`count` / `sum`), not client-side folds over full order lists.
+REST JSON `{ success, data, message }`. Zod validates bodies. Passwords use bcrypt. Login/register set an HTTP-only `access_token` cookie (JWT: `sub`, email, role). Middleware reads that cookie only. Roles and ownership are enforced in services (customers cannot set `customerId`; agents see assigned orders). Pricing, assignment, and transitions stay server-side.
+
+## Notifications
+
+A status change maps to an event. `NotificationService` renders a template and calls `EmailService`. With `RESEND_API_KEY`, Resend sends mail (`SENT`). Development without a key logs the payload (`LOGGED`). Production without a key stores `FAILED` without failing the order. Admins can retry a failed row.
+
+## Design principles
+
+Pricing is configuration-driven. Business rules live in services and tested `lib` functions, not in React. Tracking is append-only. Assignment records why an agent was chosen. Access is role-based. Modules can be extended (new cards, zones, email providers) without rewriting the order path.
