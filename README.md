@@ -1,5 +1,10 @@
 # Last-Mile Delivery Tracker
 
+**Live app:** [https://last-mile-frontend.vercel.app](https://last-mile-frontend.vercel.app)  
+**API:** [https://lastmile-api-4xox.onrender.com](https://lastmile-api-4xox.onrender.com) · [health](https://lastmile-api-4xox.onrender.com/health) · [docs](https://lastmile-api-4xox.onrender.com/api/docs)
+
+The first request after idle time can take ~30 seconds while the free Render API wakes.
+
 LastMile is a last-mile delivery management platform. Customers (or admins acting for a customer) create a shipment from pickup and drop locations; the API resolves Hyderabad zones from pincodes, prices the job from stored rate cards (B2B/B2C, intra/inter-zone, COD surcharge), and shows the quote before the order is confirmed. Admins assign agents manually or automatically. Agents update availability, share location, and walk a delivery status machine. Failed attempts can be rescheduled without rewriting history. Customers receive status emails, and admins manage zones, pincode mappings, rate cards, agents, and orders from the dashboard.
 
 ---
